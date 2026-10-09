@@ -1,8 +1,12 @@
-# Reusable Docker Image Build Workflow for Zhijun IO Projects
+# Reusable Maven Docker Image Build Workflow for Zhijun IO Projects
 #
-# Builds the image described by the Dockerfile and optionally pushes it. Uses
-# the docker/buildx CLI shipped with the runner image, so no third-party Docker
-# actions are pulled in and there is nothing extra to pin or keep current.
+# Packages the Maven project with ./mvnw, then builds the image described by the
+# Dockerfile and optionally pushes it. The Maven part mirrors ci-build.yml: JDK
+# plus the local repository cache. Which artifact ends up in the image is the
+# Dockerfile's decision - this workflow only guarantees that it has been built.
+# The image part uses the docker/buildx CLI shipped with the runner image, so no
+# third-party Docker actions are pulled in and there is nothing extra to pin or
+# keep current.
 #
 # Single-architecture builds only: multi-arch needs a buildx builder with a
 # cross-architecture engine, which this workflow deliberately does not set up.
@@ -19,15 +23,37 @@
 #       packages: write
 #     uses: zhijun-io/github-workflows/.github/workflows/docker-build.yml@main
 #     with:
+#       java-version: '17'
 #       push: true
 #       tags: '0.1.0,latest'
-#       build-args: 'JAR_FILE=target/app.jar'
+#       context: 'service'        # Maven runs at the repository root; the build
+#                                 # context may be the module that owns the Dockerfile
 
 name: Docker Build
 
 on:
   workflow_call:
     inputs:
+      java-version:
+        description: 'Java version used to package the application'
+        required: false
+        type: string
+        default: '17'
+      java-distribution:
+        description: 'Java distribution to use'
+        required: false
+        type: string
+        default: 'temurin'
+      maven-goals:
+        description: 'Maven goals that produce the artifacts the Dockerfile copies'
+        required: false
+        type: string
+        default: 'clean package -B -ntp'
+      skip-tests:
+        description: 'Skip running tests'
+        required: false
+        type: boolean
+        default: false
       registry:
         description: 'Registry to tag and push against'
         required: false
@@ -77,7 +103,7 @@ on:
         description: 'Maximum job runtime'
         required: false
         type: number
-        default: 30
+        default: 60
     secrets:
       DOCKER_TOKEN:
         description: 'Password or access token for registries other than ghcr.io'
@@ -102,6 +128,25 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+
+      - name: Set up JDK ${{ inputs.java-version }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: ${{ inputs.java-distribution }}
+          cache: maven
+
+      - name: Package with Maven
+        env:
+          MAVEN_GOALS: ${{ inputs.maven-goals }}
+          SKIP_TESTS: ${{ inputs.skip-tests }}
+        run: |
+          EXTRA_ARGS=""
+          if [ "$SKIP_TESTS" = "true" ]; then
+            EXTRA_ARGS="-DskipTests"
+          fi
+          # shellcheck disable=SC2086  # goal list is intentionally word-split
+          ./mvnw ${MAVEN_GOALS} ${EXTRA_ARGS}
 
       - name: Log in to GitHub Packages
         if: ${{ inputs.push && inputs.registry == 'ghcr.io' }}
@@ -131,6 +176,17 @@ jobs:
           owner="$(printf '%s' "$owner" | tr '[:upper:]' '[:lower:]')"
           image="${REGISTRY}/${owner}/${name}"
 
+          args=()
+          requested_args="${BUILD_ARGS// /}"
+          if [ -n "$requested_args" ]; then
+            IFS=',' read -r -a parsed_args <<< "$requested_args"
+            for build_arg in "${parsed_args[@]}"; do
+              if [ -n "$build_arg" ]; then
+                args+=("--build-arg" "$build_arg")
+              fi
+            done
+          fi
+
           tags=()
           requested_tags="${TAGS// /}"
           if [ -n "$requested_tags" ]; then
@@ -143,16 +199,7 @@ jobs:
           fi
           tags+=("sha-$(git rev-parse --short=7 HEAD)")
 
-          args=()
-          requested_args="${BUILD_ARGS// /}"
-          if [ -n "$requested_args" ]; then
-            IFS=',' read -r -a parsed_args <<< "$requested_args"
-            for build_arg in "${parsed_args[@]}"; do
-              if [ -n "$build_arg" ]; then
-                args+=("--build-arg" "$build_arg")
-              fi
-            done
-          fi
+          # args is never empty here: at least one tag is always appended
           for tag in "${tags[@]}"; do
             args+=("--tag" "${image}:${tag}")
           done

@@ -2,10 +2,8 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
   "description": [
-    "Renovate 配置：由 GitHub App 直接读取本文件，不再自带调度工作流。",
-    "本仓库只有工作流，没有包清单，因此只启用 github-actions manager。"
+    "Renovate 配置：由 GitHub App 直接读取本文件，不再自带调度工作流。"
   ],
-  "enabledManagers": ["github-actions"],
   "labels": ["dependencies"],
   "schedule": ["before 9am on monday"],
   "timezone": "Asia/Shanghai",
