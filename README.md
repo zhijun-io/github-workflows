@@ -13,12 +13,11 @@ github-workflows/
 │   │   ├── ci-build.yml               # Reusable CI build and test workflow
 │   │   ├── publish-snapshot.yml       # Reusable -SNAPSHOT publishing workflow
 │   │   ├── maven-central-release.yml  # Reusable Maven Central release workflow
-│   │   ├── docker-build.yml           # Reusable Docker image build and push workflow
-│   │   └── renovate.yml               # Runs self-hosted Renovate on a schedule
+│   │   └── docker-build.yml           # Reusable Docker image build and push workflow
 │   ├── community-projects.yml         # Project registry (documentation only)
-│   ├── project.yml.template           # Template for a future PR-based release flow
-│   └── renovate.json5                 # Renovate policy: automerge, no major bumps
+│   └── project.yml.template           # Template for a future PR-based release flow
 ├── examples/rose-parent/              # Ready-to-copy caller workflows
+├── renovate.json                      # Renovate policy: automerge, no major bumps
 ├── zhijun-io-release.py               # Local release preflight + workflow trigger
 ├── LICENSE                            # Apache License 2.0
 ├── RELEASE.md                         # Inputs, secrets, POM requirements
@@ -97,7 +96,7 @@ drops inputs that the caller does not declare.
 Minimal Docker caller:
 
 ```yaml
-name: Container Image
+name: Docker Image
 
 on:
   workflow_dispatch:
@@ -138,9 +137,11 @@ pushes - the workflow owns the release. Requires Python 3.8+ and `gh`
 
 ## Version Bumps
 
-`.github/workflows/renovate.yml` runs self-hosted Renovate weekly against
-`.github/renovate.json5`, updating the `actions/*` refs and the SHA-pinned
-third-party actions.
+`renovate.json` in the repository root configures the Renovate GitHub App, which
+updates the `actions/*` refs and the SHA-pinned third-party actions on the
+`schedule` declared there (Monday mornings, `Asia/Shanghai`). No Renovate
+workflow ships with this repository: the hosted service reads the root config, so
+there is no runner time and no `RENOVATE_TOKEN` secret to maintain.
 
 Policy: `patch`, `minor` and `pin` updates are grouped into one pull request and
 **automerged**. `major` updates open a pull request but are never automerged - a
@@ -152,14 +153,16 @@ for: an automerged action bump lands unverified, and a mistake surfaces later as
 a failing workflow in a consuming repository. Keep `major` out of automerge for
 that reason, and review the grouped PR before it merges if you want a say.
 
-Setup and guardrails:
+Setup:
 
-1. Create `RENOVATE_TOKEN` as a fine-grained PAT (or GitHub App installation
-   token) with write access to this repository and the `workflow` scope. Renovate
-   must merge with that token - a merge made with the default `GITHUB_TOKEN`
-   never triggers workflows in the consuming repositories.
-2. Branch protection must let that token bypass pull-request reviews, otherwise
-   automerge stalls silently.
+1. Install the Renovate GitHub App on this repository or its organisation. The
+   hosted service is free for public repositories; a private repository needs a
+   Mend hosted plan, or a scheduled workflow running `renovatebot/github-action`
+   with a `RENOVATE_TOKEN`.
+2. Merge the onboarding pull request created on the first run - Renovate stays
+   idle until it is approved.
+3. `automergeType: "branch"` pushes accepted updates straight to the base branch,
+   so any branch protection rule must allow the app to do that.
 
 ## Projects
 
