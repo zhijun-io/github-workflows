@@ -1,5 +1,9 @@
 # Reusable Snapshot Publishing Workflow for Zhijun IO Projects
 #
+# Publishes a -SNAPSHOT version to Maven Central using ./mvnw. The project POM
+# (or its parent) must declare the `central` snapshot repository in
+# <distributionManagement>.
+#
 # Usage in calling repository:
 # jobs:
 #   publish:
@@ -33,6 +37,11 @@ on:
         required: false
         type: boolean
         default: true
+      timeout-minutes:
+        description: 'Maximum job runtime'
+        required: false
+        type: number
+        default: 60
     secrets:
       MAVEN_USERNAME:
         description: 'Maven Central username'
@@ -44,12 +53,13 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up JDK ${{ inputs.java-version }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: ${{ inputs.java-version }}
           distribution: ${{ inputs.java-distribution }}
@@ -60,12 +70,14 @@ jobs:
 
       - name: Build and verify
         if: ${{ inputs.verify-first }}
+        env:
+          SKIP_TESTS: ${{ inputs.skip-tests }}
         run: |
-          if [ "${{ inputs.skip-tests }}" = "true" ]; then
-            ./mvnw clean verify -B -ntp -DskipTests
-          else
-            ./mvnw clean verify -B -ntp
+          EXTRA_ARGS=""
+          if [ "$SKIP_TESTS" = "true" ]; then
+            EXTRA_ARGS="-DskipTests"
           fi
+          ./mvnw clean verify -B ${EXTRA_ARGS}
 
       - name: Publish snapshot to Maven Central
         run: ./mvnw deploy -B -DskipTests

@@ -1,5 +1,7 @@
 # Reusable CI Build Workflow for Zhijun IO Projects
 #
+# Builds and tests a Maven project that provides ./mvnw.
+#
 # Usage in calling repository:
 # jobs:
 #   build:
@@ -37,33 +39,46 @@ on:
         required: false
         type: boolean
         default: true
+      timeout-minutes:
+        description: 'Maximum job runtime'
+        required: false
+        type: number
+        default: 60
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up JDK ${{ inputs.java-version }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: ${{ inputs.java-version }}
           distribution: ${{ inputs.java-distribution }}
           cache: maven
 
       - name: Build with Maven
+        env:
+          MAVEN_GOALS: ${{ inputs.maven-goals }}
+          SKIP_TESTS: ${{ inputs.skip-tests }}
         run: |
-          if [ "${{ inputs.skip-tests }}" = "true" ]; then
-            ./mvnw ${{ inputs.maven-goals }} -DskipTests
-          else
-            ./mvnw ${{ inputs.maven-goals }}
+          EXTRA_ARGS=""
+          if [ "$SKIP_TESTS" = "true" ]; then
+            EXTRA_ARGS="-DskipTests"
           fi
+          # shellcheck disable=SC2086  # goal list is intentionally word-split
+          ./mvnw ${MAVEN_GOALS} ${EXTRA_ARGS}
 
       - name: Upload test results
-        if: ${{ inputs.upload-test-results && always() }}
-        uses: actions/upload-artifact@v4
+        if: ${{ always() && inputs.upload-test-results }}
+        uses: actions/upload-artifact@v6
         with:
           name: test-results
-          path: '**/target/surefire-reports/'
+          path: |
+            **/target/surefire-reports/
+            **/target/failsafe-reports/
+          if-no-files-found: warn
           retention-days: 7
