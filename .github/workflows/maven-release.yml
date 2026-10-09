@@ -38,6 +38,16 @@ on:
         required: false
         type: string
         default: ''
+      next-version:
+        description: 'Next development version to commit after the release (e.g., 0.1.1-SNAPSHOT). Empty means derive it as the release version with patch+1 and -SNAPSHOT.'
+        required: false
+        type: string
+        default: ''
+      release-branch:
+        description: 'Branch to push the release commits to. Defaults to the repository default branch.'
+        required: false
+        type: string
+        default: ''
       java-version:
         description: 'Java version to use'
         required: false
@@ -63,16 +73,6 @@ on:
         required: false
         type: string
         default: 'v'
-      next-version:
-        description: 'Next development version to commit after the release (e.g., 0.1.1-SNAPSHOT). Empty means derive it as the release version with patch+1 and -SNAPSHOT.'
-        required: false
-        type: string
-        default: ''
-      release-branch:
-        description: 'Branch to push the release commits to. Defaults to the repository default branch.'
-        required: false
-        type: string
-        default: ''
       timeout-minutes:
         description: 'Maximum job runtime'
         required: false
