@@ -57,7 +57,7 @@ declare the `central` snapshot repository in `<distributionManagement>`.
   repository default branch
 - `timeout-minutes` (default: `30`)
 
-**Secrets (required)**: `MAVEN_USERNAME`, `MAVEN_PASSWORD`, `GPG_SECRET_KEY`, `GPG_PASSPHRASE`
+**Secrets (required)**: `MAVEN_USERNAME`, `MAVEN_PASSWORD`, `MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE`
 
 The calling job must declare:
 
@@ -164,8 +164,8 @@ individual repositories can override them.
 |--------|-------------|
 | `MAVEN_USERNAME` | Sonatype Central Portal username |
 | `MAVEN_PASSWORD` | Sonatype Central Portal token |
-| `GPG_SECRET_KEY` | ASCII-armored GPG private key |
-| `GPG_PASSPHRASE` | GPG key passphrase |
+| `MAVEN_GPG_PRIVATE_KEY` | ASCII-armored GPG private key |
+| `MAVEN_GPG_PASSPHRASE` | GPG key passphrase |
 | `DOCKER_TOKEN` | Password or access token for a Docker registry other than GHCR - optional |
 
 ## Project Registry
