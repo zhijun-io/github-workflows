@@ -1,0 +1,43 @@
+# Project Configuration Template
+#
+# Copy this file to .github/project.yml in your repository to enable
+# version tracking and optional PR-based releases.
+#
+# PR-based release flow:
+# 1. Create a PR that updates `release.current-version`
+# 2. Merging the PR triggers the release workflow automatically
+#
+# This is OPTIONAL - projects can continue using manual workflow_dispatch releases.
+
+# Project name (should match repository name)
+name: rose-example
+
+# Release configuration
+release:
+  # Current release version (change this to trigger a release)
+  current-version: "0.1.0-SNAPSHOT"
+
+  # Next development version after release
+  next-version: "0.2.0-SNAPSHOT"
+
+# Integration settings
+integration:
+  # Use reusable workflows from github-workflows
+  uses-reusable-workflows: true
+
+  # Enable automatic releases when this file changes
+  # Set to false for manual workflow_dispatch releases only
+  pr-based-releases: false
+
+  # Java version for builds
+  java-version: "17"
+
+# Optional: Custom workflow settings
+# workflows:
+#   ci:
+#     skip-tests: false
+#     maven-goals: "clean verify -B -ntp"
+#   release:
+#     skip-tests: false
+#     create-tag: true
+#     tag-prefix: "v"

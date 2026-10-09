@@ -1,0 +1,24 @@
+# agent-client project configuration
+# Place this file at .github/project.yml in the agent-client repository
+
+name: agent-client
+
+release:
+  current-version: "0.9.0-SNAPSHOT"
+  next-version: "0.10.0-SNAPSHOT"
+
+integration:
+  uses-reusable-workflows: true
+  pr-based-releases: false
+  java-version: "17"
+
+# CLI tools required for this project
+cli-tools:
+  claude-cli: true
+  gemini-cli: true
+  vendir-cli: true
+
+# Repo-specific secrets required (not org-level)
+secrets:
+  - ANTHROPIC_API_KEY
+  - GEMINI_API_KEY

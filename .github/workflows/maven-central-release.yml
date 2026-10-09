@@ -1,0 +1,148 @@
+# Reusable Maven Central Release Workflow for Zhijun IO Projects
+#
+# This workflow handles the complete release process:
+# 1. Sets the release version
+# 2. Builds and verifies
+# 3. Publishes to Maven Central (with GPG signing)
+# 4. Creates Git tag
+#
+# Usage in calling repository:
+# jobs:
+#   release:
+#     uses: zhijun-io/github-workflows/.github/workflows/maven-central-release.yml@main
+#     with:
+#       version: '0.1.0'
+#     secrets:
+#       MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
+#       MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
+#       GPG_SECRET_KEY: ${{ secrets.GPG_SECRET_KEY }}
+#       GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+name: Maven Central Release
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Release version (e.g., 0.1.0)'
+        required: true
+        type: string
+      java-version:
+        description: 'Java version to use'
+        required: false
+        type: string
+        default: '17'
+      java-distribution:
+        description: 'Java distribution to use'
+        required: false
+        type: string
+        default: 'temurin'
+      skip-tests:
+        description: 'Skip running tests'
+        required: false
+        type: boolean
+        default: false
+      create-tag:
+        description: 'Create and push Git tag'
+        required: false
+        type: boolean
+        default: true
+      tag-prefix:
+        description: 'Tag prefix (e.g., v for v0.1.0)'
+        required: false
+        type: string
+        default: 'v'
+    secrets:
+      MAVEN_USERNAME:
+        description: 'Maven Central username'
+        required: true
+      MAVEN_PASSWORD:
+        description: 'Maven Central password/token'
+        required: true
+      GPG_SECRET_KEY:
+        description: 'GPG private key for signing'
+        required: true
+      GPG_PASSPHRASE:
+        description: 'GPG passphrase'
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ inputs.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: ${{ inputs.java-distribution }}
+          cache: maven
+          server-id: central
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_SECRET_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      - name: Set version
+        run: ./mvnw versions:set -DnewVersion=${{ inputs.version }} -DgenerateBackupPoms=false
+
+      - name: Verify no SNAPSHOT dependencies
+        run: |
+          if grep -r "SNAPSHOT" --include="pom.xml" . | grep -v "<!--" | grep -v "target/"; then
+            echo "ERROR: Found SNAPSHOT references in POM files"
+            exit 1
+          fi
+          echo "No SNAPSHOT dependencies found"
+
+      - name: Build and verify
+        run: |
+          if [ "${{ inputs.skip-tests }}" = "true" ]; then
+            ./mvnw clean verify -B -ntp -DskipTests
+          else
+            ./mvnw clean verify -B -ntp
+          fi
+
+      - name: Publish release to Maven Central
+        run: ./mvnw deploy -B -DskipTests -Prelease
+        env:
+          MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Commit release version
+        if: ${{ inputs.create-tag }}
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -m "Release ${{ inputs.version }}"
+
+      - name: Create Git tag
+        if: ${{ inputs.create-tag }}
+        run: |
+          git tag -a ${{ inputs.tag-prefix }}${{ inputs.version }} -m "Release ${{ inputs.tag-prefix }}${{ inputs.version }}"
+          git push origin ${{ inputs.tag-prefix }}${{ inputs.version }}
+
+      - name: Create GitHub Release
+        if: ${{ inputs.create-tag }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag-prefix }}${{ inputs.version }}
+          name: ${{ inputs.version }}
+          draft: false
+          prerelease: ${{ contains(inputs.version, '-') }}
+          generate_release_notes: true
+
+      - name: Bump to next SNAPSHOT version
+        if: ${{ inputs.create-tag }}
+        run: |
+          # Parse version and increment minor: 0.13.0 -> 0.14.0-SNAPSHOT
+          IFS='.' read -r major minor patch <<< "${{ inputs.version }}"
+          NEXT_VERSION="${major}.$((minor + 1)).0-SNAPSHOT"
+          echo "Bumping to next development version: ${NEXT_VERSION}"
+          ./mvnw versions:set -DnewVersion=${NEXT_VERSION} -DgenerateBackupPoms=false
+          git add -A
+          git commit -m "Bump development version to ${NEXT_VERSION}"
+          git push origin HEAD:main

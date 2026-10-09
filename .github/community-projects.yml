@@ -1,0 +1,29 @@
+# Zhijun IO Project Registry
+#
+# This file lists all projects in the Zhijun IO organization
+# that participate in coordinated releases and shared infrastructure.
+#
+# Projects can opt-in to different levels of integration:
+# - reusable-workflows: Uses shared GitHub Actions workflows
+# - parent-pom: Inherits from community-parent POM
+# - pr-based-releases: Automatically releases when project.yml changes
+#
+# Dependency order determines release sequence for coordinated releases.
+
+organization: zhijun-io
+default-java-version: "17"
+
+projects:
+  - name: agent-client
+    repo: zhijun-io/agent-client
+    description: "Sandbox abstraction for secure code execution in AI agent applications"
+    artifact-id: agent-client-parent
+    group-id: io.github.zhijun-io
+    dependencies: []
+    integration:
+      reusable-workflows: true
+      parent-pom: false
+      pr-based-releases: false
+
+
+

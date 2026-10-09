@@ -1,0 +1,69 @@
+# Reusable CI Build Workflow for Zhijun IO Projects
+#
+# Usage in calling repository:
+# jobs:
+#   build:
+#     uses: zhijun-io/github-workflows/.github/workflows/ci-build.yml@main
+#     with:
+#       java-version: '17'
+
+name: CI Build
+
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: 'Java version to use'
+        required: false
+        type: string
+        default: '17'
+      java-distribution:
+        description: 'Java distribution to use'
+        required: false
+        type: string
+        default: 'temurin'
+      maven-goals:
+        description: 'Maven goals to run'
+        required: false
+        type: string
+        default: 'clean verify -B -ntp'
+      skip-tests:
+        description: 'Skip running tests'
+        required: false
+        type: boolean
+        default: false
+      upload-test-results:
+        description: 'Upload test results as artifact'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ inputs.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: ${{ inputs.java-distribution }}
+          cache: maven
+
+      - name: Build with Maven
+        run: |
+          if [ "${{ inputs.skip-tests }}" = "true" ]; then
+            ./mvnw ${{ inputs.maven-goals }} -DskipTests
+          else
+            ./mvnw ${{ inputs.maven-goals }}
+          fi
+
+      - name: Upload test results
+        if: ${{ inputs.upload-test-results && always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/target/surefire-reports/'
+          retention-days: 7

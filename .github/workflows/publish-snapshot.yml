@@ -1,0 +1,74 @@
+# Reusable Snapshot Publishing Workflow for Zhijun IO Projects
+#
+# Usage in calling repository:
+# jobs:
+#   publish:
+#     uses: zhijun-io/github-workflows/.github/workflows/publish-snapshot.yml@main
+#     secrets:
+#       MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
+#       MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
+
+name: Publish Snapshot
+
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: 'Java version to use'
+        required: false
+        type: string
+        default: '17'
+      java-distribution:
+        description: 'Java distribution to use'
+        required: false
+        type: string
+        default: 'temurin'
+      skip-tests:
+        description: 'Skip running tests before publish'
+        required: false
+        type: boolean
+        default: false
+      verify-first:
+        description: 'Run verify before deploy'
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      MAVEN_USERNAME:
+        description: 'Maven Central username'
+        required: true
+      MAVEN_PASSWORD:
+        description: 'Maven Central password/token'
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ inputs.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: ${{ inputs.java-distribution }}
+          cache: maven
+          server-id: central
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+
+      - name: Build and verify
+        if: ${{ inputs.verify-first }}
+        run: |
+          if [ "${{ inputs.skip-tests }}" = "true" ]; then
+            ./mvnw clean verify -B -ntp -DskipTests
+          else
+            ./mvnw clean verify -B -ntp
+          fi
+
+      - name: Publish snapshot to Maven Central
+        run: ./mvnw deploy -B -DskipTests
+        env:
+          MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
