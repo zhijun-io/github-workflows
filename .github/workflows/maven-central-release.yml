@@ -1,17 +1,24 @@
 # Reusable Maven Central Release Workflow for Zhijun IO Projects
 #
-# This workflow handles the complete release process:
+# This workflow owns the whole release:
 # 1. Sets the release version
 # 2. Builds and verifies
-# 3. Publishes to Maven Central (with GPG signing)
-# 4. Creates Git tag
+# 3. Publishes to Maven Central (with GPG signing via the `release` POM profile)
+# 4. Commits the release version and creates the Git tag
+# 5. Optionally bumps to the next development version
+#
+# The calling job MUST grant `permissions: contents: write`, otherwise pushing
+# the release commit, the tag and the GitHub Release all fail.
 #
 # Usage in calling repository:
 # jobs:
 #   release:
+#     permissions:
+#       contents: write
 #     uses: zhijun-io/github-workflows/.github/workflows/maven-central-release.yml@main
 #     with:
 #       version: '0.1.0'
+#       next-version: '0.1.1-SNAPSHOT'
 #     secrets:
 #       MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
 #       MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
@@ -52,6 +59,21 @@ on:
         required: false
         type: string
         default: 'v'
+      next-version:
+        description: 'Next development version to commit after the release (e.g., 0.1.1-SNAPSHOT). Empty means no bump.'
+        required: false
+        type: string
+        default: ''
+      release-branch:
+        description: 'Branch to push the release commits to. Defaults to the repository default branch.'
+        required: false
+        type: string
+        default: ''
+      timeout-minutes:
+        description: 'Maximum job runtime'
+        required: false
+        type: number
+        default: 30
     secrets:
       MAVEN_USERNAME:
         description: 'Maven Central username'
@@ -69,12 +91,18 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    concurrency:
+      group: maven-central-release
+      cancel-in-progress: false
+    env:
+      RELEASE_BRANCH: ${{ inputs.release-branch != '' && inputs.release-branch || github.event.repository.default_branch }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up JDK ${{ inputs.java-version }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: ${{ inputs.java-version }}
           distribution: ${{ inputs.java-distribution }}
@@ -85,24 +113,51 @@ jobs:
           gpg-private-key: ${{ secrets.GPG_SECRET_KEY }}
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
 
-      - name: Set version
-        run: ./mvnw versions:set -DnewVersion=${{ inputs.version }} -DgenerateBackupPoms=false
-
-      - name: Verify no SNAPSHOT dependencies
+      - name: Validate version inputs
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          NEXT_VERSION: ${{ inputs.next-version }}
         run: |
-          if grep -r "SNAPSHOT" --include="pom.xml" . | grep -v "<!--" | grep -v "target/"; then
-            echo "ERROR: Found SNAPSHOT references in POM files"
+          VERSION_REGEX='^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$'
+          if ! printf '%s' "$RELEASE_VERSION" | grep -Eq "$VERSION_REGEX"; then
+            echo "::error::version must be X.Y.Z or X.Y.Z-suffix, got '${RELEASE_VERSION}'"
             exit 1
           fi
-          echo "No SNAPSHOT dependencies found"
+          if [ -n "$NEXT_VERSION" ] && ! printf '%s' "$NEXT_VERSION" | grep -Eq "$VERSION_REGEX"; then
+            echo "::error::next-version must be X.Y.Z or X.Y.Z-suffix, got '${NEXT_VERSION}'"
+            exit 1
+          fi
+
+      - name: Configure Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Set version
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: ./mvnw -B versions:set -DnewVersion="${RELEASE_VERSION}" -DgenerateBackupPoms=false
+
+      - name: Verify no SNAPSHOT references
+        run: |
+          # Anchor on <version> and <*.version> elements so comments and
+          # <snapshots> config do not trigger false positives. This still catches
+          # parent versions and version properties pointing at SNAPSHOT.
+          if grep -rnE --include=pom.xml --exclude-dir=target '<(version|[A-Za-z0-9._-]+\.version)>[^<]*SNAPSHOT' .; then
+            echo "::error::SNAPSHOT versions found in POM files"
+            exit 1
+          fi
+          echo "No SNAPSHOT references found"
 
       - name: Build and verify
+        env:
+          SKIP_TESTS: ${{ inputs.skip-tests }}
         run: |
-          if [ "${{ inputs.skip-tests }}" = "true" ]; then
-            ./mvnw clean verify -B -ntp -DskipTests
-          else
-            ./mvnw clean verify -B -ntp
+          EXTRA_ARGS=""
+          if [ "$SKIP_TESTS" = "true" ]; then
+            EXTRA_ARGS="-DskipTests"
           fi
+          ./mvnw clean verify -B -ntp ${EXTRA_ARGS}
 
       - name: Publish release to Maven Central
         run: ./mvnw deploy -B -DskipTests -Prelease
@@ -113,21 +168,30 @@ jobs:
 
       - name: Commit release version
         if: ${{ inputs.create-tag }}
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
           git add -A
-          git commit -m "Release ${{ inputs.version }}"
+          if git diff --cached --quiet; then
+            echo "POM already at ${RELEASE_VERSION}, nothing to commit"
+          else
+            git commit -m "Release ${RELEASE_VERSION}"
+          fi
+          : "${RELEASE_BRANCH:?unable to resolve the target branch}"
+          git push origin "HEAD:${RELEASE_BRANCH}"
 
       - name: Create Git tag
         if: ${{ inputs.create-tag }}
+        env:
+          TAG_NAME: ${{ inputs.tag-prefix }}${{ inputs.version }}
         run: |
-          git tag -a ${{ inputs.tag-prefix }}${{ inputs.version }} -m "Release ${{ inputs.tag-prefix }}${{ inputs.version }}"
-          git push origin ${{ inputs.tag-prefix }}${{ inputs.version }}
+          git tag -a "${TAG_NAME}" -m "Release ${TAG_NAME}"
+          git push origin "${TAG_NAME}"
 
       - name: Create GitHub Release
         if: ${{ inputs.create-tag }}
-        uses: softprops/action-gh-release@v2
+        # Pinned to softprops/action-gh-release v3.0.3; Dependabot raises the pin
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
         with:
           tag_name: ${{ inputs.tag-prefix }}${{ inputs.version }}
           name: ${{ inputs.version }}
@@ -135,14 +199,17 @@ jobs:
           prerelease: ${{ contains(inputs.version, '-') }}
           generate_release_notes: true
 
-      - name: Bump to next SNAPSHOT version
-        if: ${{ inputs.create-tag }}
+      - name: Bump to next development version
+        if: ${{ inputs.create-tag && inputs.next-version != '' }}
+        env:
+          NEXT_VERSION: ${{ inputs.next-version }}
         run: |
-          # Parse version and increment minor: 0.13.0 -> 0.14.0-SNAPSHOT
-          IFS='.' read -r major minor patch <<< "${{ inputs.version }}"
-          NEXT_VERSION="${major}.$((minor + 1)).0-SNAPSHOT"
-          echo "Bumping to next development version: ${NEXT_VERSION}"
-          ./mvnw versions:set -DnewVersion=${NEXT_VERSION} -DgenerateBackupPoms=false
+          ./mvnw -B versions:set -DnewVersion="${NEXT_VERSION}" -DgenerateBackupPoms=false
           git add -A
-          git commit -m "Bump development version to ${NEXT_VERSION}"
-          git push origin HEAD:main
+          if git diff --cached --quiet; then
+            echo "Already at ${NEXT_VERSION}, nothing to commit"
+          else
+            git commit -m "Bump development version to ${NEXT_VERSION}"
+            : "${RELEASE_BRANCH:?unable to resolve the target branch}"
+            git push origin "HEAD:${RELEASE_BRANCH}"
+          fi
