@@ -77,10 +77,10 @@ jobs:
           if [ "$SKIP_TESTS" = "true" ]; then
             EXTRA_ARGS="-DskipTests"
           fi
-          ./mvnw clean verify -B ${EXTRA_ARGS}
+          ./mvnw clean verify -B -ntp ${EXTRA_ARGS}
 
       - name: Publish snapshot to Maven Central
-        run: ./mvnw deploy -B -DskipTests
+        run: ./mvnw deploy -B -ntp -DskipTests
         env:
           MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
           MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
