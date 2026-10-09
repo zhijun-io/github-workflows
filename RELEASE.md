@@ -16,10 +16,9 @@ checkout and owns every commit it pushes.
 
 ## Reusable Workflows
 
-The three Maven workflows take `java-version` (default `17`), `java-distribution`
+All four workflows take `java-version` (default `17`), `java-distribution`
 (default `temurin`) and `timeout-minutes`. They run on `ubuntu-latest` and
-require `./mvnw` in the calling repository. `docker-build.yml` is the fourth
-workflow: it runs no Maven and therefore needs no wrapper.
+require `./mvnw` in the calling repository.
 
 ### CI Build (`ci-build.yml`)
 
@@ -71,11 +70,19 @@ push step after artifacts are already published.
 
 ### Docker Image (`docker-build.yml`)
 
-Builds the image described by a `Dockerfile` with the `docker buildx` CLI that
-ships on the runner, and pushes it when `push` is `true`. No third-party Docker
-actions are used, so there is nothing extra to pin or keep current.
+Packages the project with Maven, then builds the image described by a
+`Dockerfile` with the `docker buildx` CLI that ships on the runner, and pushes it
+when `push` is `true`. Which artifact the image contains is the `Dockerfile`'s
+decision: this workflow only guarantees that `./mvnw` has run before the build,
+so `target/` is populated. No third-party Docker actions are used, so there is
+nothing extra to pin or keep current.
 
 **Inputs**
+- `java-version` (default: `17`) - JDK used to package the application
+- `java-distribution` (default: `temurin`)
+- `maven-goals` (default: `clean package -B -ntp`) - Goals that produce the
+  artifacts the `Dockerfile` copies
+- `skip-tests` (default: `false`) - Append `-DskipTests`
 - `registry` (default: `ghcr.io`) - Registry host used in every tag
 - `image-owner` (default: ``) - Registry namespace; empty resolves to the
   repository owner, lowercased because registry namespaces are case-sensitive
@@ -87,7 +94,7 @@ actions are used, so there is nothing extra to pin or keep current.
   tag is always appended
 - `build-args` (default: ``) - Comma-separated `KEY=VALUE` build arguments
 - `push` (default: `false`) - Push the built tags
-- `timeout-minutes` (default: `30`)
+- `timeout-minutes` (default: `60`)
 
 **Secrets**: none required for GHCR - the workflow logs in with the built-in
 `GITHUB_TOKEN`. Any other registry needs `DOCKER_TOKEN` plus the
@@ -103,6 +110,8 @@ The calling job must declare:
 
 Limitations, all deliberate:
 
+- Maven runs at the repository root, never inside the image. For a module-owned
+  `Dockerfile`, point `context` at that module and copy the jar relative to it.
 - Comma-separated `tags` and `build-args` cannot contain spaces; spaces are
   stripped before parsing.
 - The build command is echoed to the log for diagnosis, so `build-args` values
@@ -168,8 +177,8 @@ stops paying for itself.
 
 ## Requirements for Consumer Projects
 
-These apply to the Maven workflows. `docker-build.yml` needs only a `Dockerfile`
-at the path it is given.
+These apply to every workflow, `docker-build.yml` included. It additionally needs
+a `Dockerfile` that copies the packaged jar itself.
 
 1. Maven wrapper (`./mvnw`) committed and executable
 2. A `release` profile that publishes signed sources and javadoc through the

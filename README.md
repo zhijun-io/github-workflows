@@ -2,7 +2,7 @@
 
 Reusable GitHub Actions workflows and release tooling for Zhijun IO Maven projects.
 
-Every Maven workflow here assumes the calling repository provides a Maven wrapper (`./mvnw`).
+Every workflow here assumes the calling repository provides a Maven wrapper (`./mvnw`).
 
 ## Repository Structure
 
@@ -13,7 +13,7 @@ github-workflows/
 │   │   ├── ci-build.yml               # Reusable CI build and test workflow
 │   │   ├── publish-snapshot.yml       # Reusable -SNAPSHOT publishing workflow
 │   │   ├── maven-central-release.yml  # Reusable Maven Central release workflow
-│   │   └── docker-build.yml           # Reusable Docker image build and push workflow
+│   │   └── docker-build.yml           # Reusable Maven package + Docker image workflow
 │   ├── community-projects.yml         # Project registry (documentation only)
 │   └── project.yml.template           # Template for a future PR-based release flow
 ├── examples/rose-parent/              # Ready-to-copy caller workflows
@@ -108,16 +108,17 @@ jobs:
       packages: write
     uses: zhijun-io/github-workflows/.github/workflows/docker-build.yml@main
     with:
+      java-version: '17'
       push: true
       tags: 'latest,0.1.0'
 ```
 
-`docker-build.yml` is the only workflow that does not run Maven, so it needs no
-`./mvnw`. It builds with the `docker buildx` CLI shipped on the runner, defaults
-to `ghcr.io/<owner>/<repository>` with the built-in `GITHUB_TOKEN`, and always
-adds an immutable `sha-<short>` tag. Non-GHCR registries need the
-`registry-username` input and the `DOCKER_TOKEN` secret. Single
-architecture only, and no layer cache - see [RELEASE.md](RELEASE.md).
+`docker-build.yml` runs `./mvnw clean package` first, then builds the image with
+the `docker buildx` CLI shipped on the runner: which artifact ends up in the
+image is your `Dockerfile`'s decision. It defaults to `ghcr.io/<owner>/<repository>`
+with the built-in `GITHUB_TOKEN`, and always adds an immutable `sha-<short>` tag.
+Non-GHCR registries need the `registry-username` input and the `DOCKER_TOKEN`
+secret. Single architecture only, and no layer cache - see [RELEASE.md](RELEASE.md).
 
 ## Release Script
 
