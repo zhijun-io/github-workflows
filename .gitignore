@@ -1,2 +1,6 @@
 plans/
 CLAUDE.md
+
+# Release script workspace and state (zhijun-io-release.py)
+state/
+*-release/

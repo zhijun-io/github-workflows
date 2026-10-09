@@ -5,15 +5,18 @@ ZhiJun IO Release Script - Unified Release Automation
 Automates releases for ZhiJun IO projects with interactive
 step-by-step confirmation and dry-run support.
 
-Projects Supported:
-- rose
+The release itself (version set, commit, tag, deploy, next development version)
+is owned by the reusable workflow in the target repository. This script only
+runs a local preflight and then triggers that workflow.
 
+Projects Supported:
+- rose-parent
+- spring-boot-skills
 Usage:
-    python3 zhijun-io-release.py rose 0.1.0 --dry-run
-    python3 zhijun-io-release.py rose 0.1.0
+    python3 zhijun-io-release.py rose-parent 0.1.0 --dry-run
+    python3 zhijun-io-release.py rose-parent 0.1.0
 """
 
-import os
 import sys
 import subprocess
 import argparse
@@ -21,18 +24,29 @@ import json
 import shutil
 import re
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Dict, List, Optional
 from dataclasses import dataclass
 from datetime import datetime
 
 
+# Release workflow file inside the target repository
+RELEASE_WORKFLOW = "release.yml"
+
+# Tag prefix must match the `tag-prefix` input of the release workflow
+TAG_PREFIX = "v"
+
 # Project configuration
+#
+# A project can be listed here only if it has .github/workflows/release.yml
+# calling maven-central-release.yml (see examples/rose-parent/release.yml).
 PROJECTS = {
-    "rose": {
-        "repo": "zhijun-io/rose",
-        "description": "Spring Boot 2.7 / Java 8 extension platform",
-        "group_id": "io.zhijun",
-        "artifact_id": "rose-parent",
+    "rose-parent": {
+        "repo": "zhijun-io/rose-parent",
+        "description": "Parent POM for Rose projects (Java 17, Maven Central publishing)",
+    },
+    "spring-boot-skills": {
+        "repo": "zhijun-io/spring-boot-skills",
+        "description": "SkillsJars for Spring Boot applications",
     },
 }
 
@@ -45,9 +59,7 @@ class ReleaseConfig:
     script_dir: Path
     project_name: str
     target_version: str
-    org: str = "zhijun-io"
     dry_run: bool = False
-    skip_to: Optional[str] = None
     trigger_workflow: bool = True
 
     def __post_init__(self):
@@ -80,11 +92,11 @@ class ReleaseConfig:
 
     @property
     def tag_name(self) -> str:
-        return f"v{self.target_version}"
+        return f"{TAG_PREFIX}{self.target_version}"
 
     @property
     def next_dev_version(self) -> str:
-        """Calculate next development version"""
+        """Next development version, passed to the workflow as `next-version`"""
         parts = self.target_version.split('.')
         if len(parts) != 3:
             return f"{self.target_version}-SNAPSHOT"
@@ -144,33 +156,6 @@ class GitHelper:
         self.repo_dir = repo_dir
         self.config = config
 
-    def run_git(self, args: List[str], check: bool = True, capture_output: bool = False) -> subprocess.CompletedProcess:
-        """Run git command in the repository directory"""
-        cmd = ["git"] + args
-        try:
-            env = os.environ.copy()
-            env['GIT_EDITOR'] = 'true'
-            env['EDITOR'] = 'true'
-            env['GIT_MERGE_AUTOEDIT'] = 'no'
-
-            Logger.info(f"Running: {' '.join(cmd)} (in {self.repo_dir})")
-
-            if self.config.dry_run:
-                Logger.warn("DRY RUN: Would execute git command")
-                return subprocess.CompletedProcess(cmd, 0, '', '')
-
-            result = subprocess.run(cmd, cwd=self.repo_dir, env=env,
-                                  capture_output=capture_output, text=True, check=check)
-            return result
-
-        except subprocess.CalledProcessError as e:
-            Logger.error(f"Git command failed: {' '.join(cmd)}")
-            if e.stdout:
-                Logger.error(f"Stdout: {e.stdout}")
-            if e.stderr:
-                Logger.error(f"Stderr: {e.stderr}")
-            raise
-
     def clone_repository(self) -> bool:
         """Clone the project repository"""
         try:
@@ -180,7 +165,11 @@ class GitHelper:
                     shutil.rmtree(self.config.workspace_dir)
 
             clone_url = f"https://github.com/{self.config.repo}.git"
-            cmd = ["git", "clone", clone_url, str(self.config.workspace_dir)]
+            # `gh repo clone` authenticates for private repositories when the CLI is available
+            if shutil.which('gh'):
+                cmd = ['gh', 'repo', 'clone', self.config.repo, str(self.config.workspace_dir)]
+            else:
+                cmd = ['git', 'clone', clone_url, str(self.config.workspace_dir)]
 
             Logger.info(f"Cloning repository: {clone_url}")
 
@@ -194,6 +183,7 @@ class GitHelper:
 
         except subprocess.CalledProcessError as e:
             Logger.error(f"Failed to clone repository: {e}")
+            Logger.error("For private repositories run `gh auth login` so `gh repo clone` can authenticate.")
             return False
 
     def get_current_version(self) -> Optional[str]:
@@ -210,40 +200,17 @@ class GitHelper:
 
             with open(pom_path, 'r') as f:
                 content = f.read()
-                match = re.search(r'<version>([^<]+)</version>', content)
-                if match:
-                    return match.group(1)
+
+            # Ignore the inherited version: the first remaining <version> is the project version
+            content = re.sub(r'<parent>.*?</parent>', '', content, flags=re.DOTALL)
+            match = re.search(r'<version>([^<]+)</version>', content)
+            if match:
+                return match.group(1)
 
             return None
         except Exception as e:
             Logger.error(f"Failed to get current version: {e}")
             return None
-
-    def commit_changes(self, message: str) -> bool:
-        """Commit all changes with the given message"""
-        try:
-            self.run_git(["add", "-A"])
-            self.run_git(["commit", "-m", message])
-            return True
-        except subprocess.CalledProcessError:
-            return False
-
-    def create_tag(self, tag_name: str, message: str) -> bool:
-        """Create an annotated tag"""
-        try:
-            self.run_git(["tag", "-a", tag_name, "-m", message])
-            return True
-        except subprocess.CalledProcessError:
-            return False
-
-    def push_tag(self) -> bool:
-        """Push the release tag to remote"""
-        try:
-            Logger.info(f"Pushing tag {self.config.tag_name}")
-            self.run_git(["push", "origin", self.config.tag_name])
-            return True
-        except subprocess.CalledProcessError:
-            return False
 
 
 class MavenHelper:
@@ -290,13 +257,20 @@ class MavenHelper:
         ])
 
     def check_for_snapshots(self) -> bool:
-        """Check for any remaining SNAPSHOT versions in POM files"""
+        """Check for remaining SNAPSHOT versions in POM files
+
+        Uses the same anchored pattern as maven-central-release.yml so that
+        comments and <snapshots> configuration are not false positives.
+        """
         if self.config.dry_run:
             Logger.info("DRY RUN: Would check for SNAPSHOT versions")
             return True
 
         try:
-            cmd = ["grep", "-r", "--include=pom.xml", "-n", "SNAPSHOT", "."]
+            cmd = [
+                "grep", "-rnE", "--include=pom.xml", "--exclude-dir=target",
+                r'<(version|[A-Za-z0-9._-]+\.version)>[^<]*SNAPSHOT', ".",
+            ]
             result = subprocess.run(cmd, cwd=self.repo_dir, capture_output=True, text=True)
 
             if result.returncode == 0:
@@ -333,10 +307,10 @@ class GitHubActionsHelper:
         """Trigger the release workflow on GitHub"""
         try:
             cmd = [
-                'gh', 'workflow', 'run', 'maven-release.yml',
+                'gh', 'workflow', 'run', RELEASE_WORKFLOW,
                 '--repo', self.config.repo,
-                '--ref', self.config.tag_name,
-                '-f', f'version={self.config.target_version}'
+                '-f', f'version={self.config.target_version}',
+                '-f', f'next-version={self.config.next_dev_version}'
             ]
 
             Logger.info(f"Triggering GitHub workflow: {' '.join(cmd)}")
@@ -385,18 +359,6 @@ class ReleaseWorkflow:
                 json.dump(state, f, indent=2)
             Logger.info(f"State saved to {self.config.release_state_file}")
 
-    def load_state(self) -> Optional[Dict[str, Any]]:
-        """Load release state from file"""
-        if not self.config.release_state_file.exists():
-            return None
-
-        try:
-            with open(self.config.release_state_file, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            Logger.error(f"Failed to load release state: {e}")
-            return None
-
     def confirm_step(self, step_name: str, commands: List[str]) -> bool:
         """Ask user for confirmation before proceeding with a step"""
         Logger.step(f"Execute: {step_name}")
@@ -426,8 +388,8 @@ class ReleaseWorkflow:
         Logger.info(f"Description: {project_config['description']}")
         Logger.info(f"Repository: {self.config.repo}")
         Logger.info(f"Target Version: {self.config.target_version}")
-        Logger.info(f"Next Dev Version: {self.config.next_dev_version}")
-        Logger.info(f"Tag: {self.config.tag_name}")
+        Logger.info(f"Next Dev Version: {self.config.next_dev_version} (passed to the workflow)")
+        Logger.info(f"Tag: {self.config.tag_name} (created by the workflow)")
         Logger.info(f"Workspace: {self.config.workspace_dir}")
         Logger.info(f"Dry Run: {self.config.dry_run}")
         Logger.bold("="*60 + "\n")
@@ -446,7 +408,7 @@ class ReleaseWorkflow:
 
         # Check GitHub CLI availability
         if not self.github_helper.is_gh_available():
-            Logger.warn("GitHub CLI not available - workflow trigger will be skipped")
+            Logger.warn("GitHub CLI is not authenticated - run `gh auth login` to allow the release trigger")
 
         # Display current version
         current_version = self.git_helper.get_current_version()
@@ -467,26 +429,18 @@ class ReleaseWorkflow:
                 f"./mvnw versions:set -DnewVersion={self.config.target_version} -DgenerateBackupPoms=false",
             ]),
             ("Verify no SNAPSHOT dependencies", self._verify_no_snapshots, [
-                "grep -r --include=pom.xml SNAPSHOT .",
+                "grep -rnE --include=pom.xml --exclude-dir=target '<(version|*.version)>[^<]*SNAPSHOT' .",
             ]),
             ("Build and verify", self._build, [
                 "./mvnw clean package -Dmaven.javadoc.skip=true -DskipTests -B",
-            ]),
-            ("Commit release version", self._commit_release, [
-                "git add -A",
-                f"git commit -m 'Release version {self.config.target_version}'",
-            ]),
-            ("Create release tag", self._create_tag, [
-                f"git tag -a {self.config.tag_name} -m 'Release version {self.config.target_version}'",
-            ]),
-            ("Push release tag", self._push_tag, [
-                f"git push origin {self.config.tag_name}",
             ]),
         ]
 
         if self.config.trigger_workflow:
             steps.append(("Trigger GitHub release workflow", self._trigger_workflow, [
-                f"gh workflow run maven-release.yml --repo {self.config.repo} -f version={self.config.target_version}",
+                f"gh workflow run {RELEASE_WORKFLOW} --repo {self.config.repo}"
+                f" -f version={self.config.target_version}"
+                f" -f next-version={self.config.next_dev_version}",
             ]))
 
         completed_steps = []
@@ -515,14 +469,14 @@ class ReleaseWorkflow:
         Logger.bold(f"{'='*60}")
         Logger.info(f"Project: {self.config.project_name}")
         Logger.info(f"Version: {self.config.target_version}")
-        Logger.info(f"Tag: {self.config.tag_name}")
 
         if self.config.trigger_workflow:
-            Logger.info("\nGitHub Actions will complete the Maven Central deployment.")
+            Logger.info("\nPreflight finished. GitHub Actions now owns the release:")
+            Logger.info(f"  versions:set {self.config.target_version} -> deploy -> commit -> tag {self.config.tag_name}")
             Logger.info(f"Monitor at: https://github.com/{self.config.repo}/actions")
         else:
             Logger.info("\nNext steps:")
-            Logger.info(f"1. Trigger the release workflow manually on GitHub")
+            Logger.info(f"1. Trigger {RELEASE_WORKFLOW} on GitHub with version={self.config.target_version}")
             Logger.info(f"2. Monitor Maven Central deployment")
 
         return True
@@ -539,17 +493,6 @@ class ReleaseWorkflow:
     def _build(self) -> bool:
         return self.maven_helper.fast_build()
 
-    def _commit_release(self) -> bool:
-        message = f"Release version {self.config.target_version}"
-        return self.git_helper.commit_changes(message)
-
-    def _create_tag(self) -> bool:
-        message = f"Release version {self.config.target_version}"
-        return self.git_helper.create_tag(self.config.tag_name, message)
-
-    def _push_tag(self) -> bool:
-        return self.git_helper.push_tag()
-
     def _trigger_workflow(self) -> bool:
         if not self.github_helper.is_gh_available():
             Logger.warn("Skipping workflow trigger - GitHub CLI not available")
@@ -563,7 +506,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    %(prog)s spring-ai-sandbox 0.0.1 --dry-run
+    %(prog)s rose-parent 0.0.2 --dry-run
 
 Available Projects:
     """ + "\n    ".join(f"{name}: {config['description']}"
@@ -575,8 +518,6 @@ Available Projects:
     parser.add_argument('version', help='Target version (e.g., 0.0.1)')
     parser.add_argument('--dry-run', action='store_true',
                        help='Preview commands without executing')
-    parser.add_argument('--org', default='zhijun-io',
-                       help='GitHub organization (default: zhijun-io)')
     parser.add_argument('--no-workflow', action='store_true',
                        help='Skip triggering GitHub Actions workflow')
 
@@ -587,7 +528,6 @@ Available Projects:
             script_dir=Path(__file__).parent.resolve(),
             project_name=args.project,
             target_version=args.version,
-            org=args.org,
             dry_run=args.dry_run,
             trigger_workflow=not args.no_workflow,
         )
