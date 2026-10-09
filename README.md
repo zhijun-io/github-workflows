@@ -13,10 +13,11 @@ github-workflows/
 │   │   ├── ci-build.yml               # Reusable CI build and test workflow
 │   │   ├── publish-snapshot.yml       # Reusable -SNAPSHOT publishing workflow
 │   │   ├── maven-central-release.yml  # Reusable Maven Central release workflow
-│   │   └── lint.yml                   # Lints the reusable workflows above
+│   │   ├── lint.yml                   # Lints the reusable workflows above
+│   │   └── renovate.yml               # Runs self-hosted Renovate on a schedule
 │   ├── community-projects.yml         # Project registry (documentation only)
 │   ├── project.yml.template           # Template for a future PR-based release flow
-│   └── dependabot.yml                 # Monthly bumps for the pinned action refs
+│   └── renovate.json5                 # Renovate policy: automerge, no major bumps
 ├── examples/rose-parent/              # Ready-to-copy caller workflows
 ├── zhijun-io-release.py               # Local release preflight + workflow trigger
 ├── LICENSE                            # Apache License 2.0
@@ -118,6 +119,29 @@ actionlint
 It installs a pinned, checksum-verified `actionlint` release, so a moved tag on
 someone else's repository cannot change what the check accepts.
 
+## Version Bumps
+
+`.github/workflows/renovate.yml` runs self-hosted Renovate weekly against
+`.github/renovate.json5`, updating the `actions/*` refs, the SHA pins and the
+pinned `actionlint` version.
+
+Policy: `patch`, `minor` and `pin` updates are grouped into one pull request and
+**automerged once the lint check passes**. `major` updates open a pull request
+but are never automerged - a major action bump changes runtimes and behaviour,
+which is exactly how these workflows fell three majors behind last time.
+
+Setup and guardrails:
+
+1. Create `RENOVATE_TOKEN` as a fine-grained PAT (or GitHub App installation
+   token) with write access to this repository and the `workflow` scope. Renovate
+   must merge with that token - a merge made with the default `GITHUB_TOKEN` does
+   not trigger the lint workflow, so automerge would have nothing to wait for.
+2. Mark `Lint Workflows / actionlint` as a required status check. Renovate only
+   automerges when checks are green; without a required check a PR with no status
+   at all could merge unverified.
+3. Branch protection must let that token bypass pull-request reviews, otherwise
+   automerge stalls silently.
+
 ## Projects
 
 Verified callers of these reusable workflows:
@@ -134,7 +158,7 @@ Verified callers of these reusable workflows:
 Apache License 2.0 - see [LICENSE](LICENSE). This matches the license declared by
 the Maven projects that consume these workflows (for example `rose-parent` and
 `rose`). Third-party actions are referenced by immutable commit SHA and kept
-current by Dependabot.
+current by Renovate.
 
 ## Documentation
 
