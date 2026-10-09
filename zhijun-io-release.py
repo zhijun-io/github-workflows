@@ -38,7 +38,7 @@ TAG_PREFIX = "v"
 # Project configuration
 #
 # A project can be listed here only if it has .github/workflows/release.yml
-# calling maven-central-release.yml (see examples/rose-parent/release.yml).
+# calling maven-release.yml (see examples/rose-parent/release.yml).
 PROJECTS = {
     "rose-parent": {
         "repo": "zhijun-io/rose-parent",
@@ -259,7 +259,7 @@ class MavenHelper:
     def check_for_snapshots(self) -> bool:
         """Check for remaining SNAPSHOT versions in POM files
 
-        Uses the same anchored pattern as maven-central-release.yml so that
+        Uses the same anchored pattern as maven-release.yml so that
         comments and <snapshots> configuration are not false positives.
         """
         if self.config.dry_run:

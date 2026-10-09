@@ -1,7 +1,7 @@
 # Snapshot publishing workflow for rose-parent
-# Place this file at .github/workflows/publish-snapshot.yml in the rose-parent repository
+# Place this file at .github/workflows/maven-snapshot.yml in the rose-parent repository
 
-name: Publish Snapshot
+name: Maven Snapshot
 
 on:
   push:
@@ -18,16 +18,16 @@ on:
         type: boolean
 
 concurrency:
-  group: publish-${{ github.ref }}
+  group: snapshot-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  publish:
+  snapshot:
     if: github.repository_owner == 'zhijun-io'
-    uses: zhijun-io/github-workflows/.github/workflows/publish-snapshot.yml@main
+    uses: zhijun-io/github-workflows/.github/workflows/maven-snapshot.yml@main
     with:
       java-version: '17'
       skip-tests: ${{ inputs.skip_tests }}

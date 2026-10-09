@@ -10,9 +10,9 @@ Every workflow here assumes the calling repository provides a Maven wrapper (`./
 github-workflows/
 ├── .github/
 │   ├── workflows/
-│   │   ├── ci-build.yml               # Reusable CI build and test workflow
-│   │   ├── publish-snapshot.yml       # Reusable -SNAPSHOT publishing workflow
-│   │   ├── maven-central-release.yml  # Reusable Maven Central release workflow
+│   │   ├── ci.yml                     # Reusable CI build and test workflow
+│   │   ├── maven-snapshot.yml         # Reusable -SNAPSHOT publishing workflow
+│   │   ├── maven-release.yml          # Reusable Maven Central release workflow
 │   │   └── docker-build.yml           # Reusable Maven package + Docker image workflow
 │   ├── community-projects.yml         # Project registry (documentation only)
 │   └── project.yml.template           # Template for a future PR-based release flow
@@ -38,7 +38,7 @@ github-workflows/
 
 Copy the three files from `examples/rose-parent/` into
 `.github/workflows/` of the consuming repository (renaming them to `ci.yml`,
-`publish-snapshot.yml` and `release.yml`) and adjust `java-version`.
+`maven-snapshot.yml` and `maven-release.yml`) and adjust `java-version`.
 
 Minimal CI caller:
 
@@ -53,7 +53,7 @@ on:
 
 jobs:
   build:
-    uses: zhijun-io/github-workflows/.github/workflows/ci-build.yml@main
+    uses: zhijun-io/github-workflows/.github/workflows/ci.yml@main
     with:
       java-version: '17'
 ```
@@ -79,7 +79,7 @@ jobs:
   release:
     permissions:
       contents: write
-    uses: zhijun-io/github-workflows/.github/workflows/maven-central-release.yml@main
+    uses: zhijun-io/github-workflows/.github/workflows/maven-maven-release.yml@main
     with:
       version: ${{ inputs.version }}
       next-version: ${{ inputs.next-version }}
@@ -132,7 +132,7 @@ python3 zhijun-io-release.py rose-parent 0.0.2
 
 The script clones the target repository into `<project>-release/`, sets the
 version, checks for SNAPSHOT references, runs a fast build and triggers
-`release.yml` with `version` and `next-version`. It never commits, tags or
+`maven-release.yml` with `version` and `next-version`. It never commits, tags or
 pushes - the workflow owns the release. Requires Python 3.8+ and `gh`
 (`gh auth login`) for the trigger step; `--no-workflow` stops after the preflight.
 

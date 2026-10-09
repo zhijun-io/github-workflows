@@ -1,7 +1,7 @@
 # Release workflow for rose-parent
-# Place this file at .github/workflows/release.yml in the rose-parent repository
+# Place this file at .github/workflows/maven-release.yml in the rose-parent repository
 
-name: Release
+name: Maven Release
 
 on:
   workflow_dispatch:
@@ -33,7 +33,7 @@ jobs:
     if: github.repository_owner == 'zhijun-io'
     permissions:
       contents: write
-    uses: zhijun-io/github-workflows/.github/workflows/maven-central-release.yml@main
+    uses: zhijun-io/github-workflows/.github/workflows/maven-release.yml@main
     with:
       version: ${{ inputs.version }}
       next-version: ${{ inputs.next-version }}

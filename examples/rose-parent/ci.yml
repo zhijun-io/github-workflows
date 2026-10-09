@@ -1,7 +1,7 @@
 # CI workflow for rose-parent
 # Place this file at .github/workflows/ci.yml in the rose-parent repository
 
-name: CI Build
+name: CI
 
 on:
   schedule:
@@ -29,7 +29,7 @@ permissions:
 jobs:
   build:
     if: github.repository_owner == 'zhijun-io'
-    uses: zhijun-io/github-workflows/.github/workflows/ci-build.yml@main
+    uses: zhijun-io/github-workflows/.github/workflows/ci.yml@main
     with:
       java-version: '17'
       maven-goals: 'clean install -B'

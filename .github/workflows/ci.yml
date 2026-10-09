@@ -1,11 +1,11 @@
-# Reusable CI Build Workflow for Zhijun IO Projects
+# Reusable CI Workflow for Zhijun IO Projects
 #
 # Builds and tests a Maven project that provides ./mvnw.
 #
 # Usage in calling repository:
 # jobs:
 #   build:
-#     uses: zhijun-io/github-workflows/.github/workflows/ci-build.yml@main
+#     uses: zhijun-io/github-workflows/.github/workflows/ci.yml@main
 #     with:
 #       java-version: '17'
 

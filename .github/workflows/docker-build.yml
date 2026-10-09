@@ -1,7 +1,7 @@
 # Reusable Maven Docker Image Build Workflow for Zhijun IO Projects
 #
 # Packages the Maven project with ./mvnw, then builds the image described by the
-# Dockerfile and optionally pushes it. The Maven part mirrors ci-build.yml: JDK
+# Dockerfile and optionally pushes it. The Maven part mirrors ci.yml: JDK
 # plus the local repository cache. Which artifact ends up in the image is the
 # Dockerfile's decision - this workflow only guarantees that it has been built.
 # The image part uses the docker/buildx CLI shipped with the runner image, so no

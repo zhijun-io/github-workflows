@@ -1,4 +1,4 @@
-# Reusable Maven Central Release Workflow for Zhijun IO Projects
+# Reusable Maven Release Workflow for Zhijun IO Projects
 #
 # This workflow owns the whole release:
 # 1. Sets the release version
@@ -15,25 +15,29 @@
 #   release:
 #     permissions:
 #       contents: write
-#     uses: zhijun-io/github-workflows/.github/workflows/maven-central-release.yml@main
+#     uses: zhijun-io/github-workflows/.github/workflows/maven-release.yml@main
 #     with:
 #       version: '0.1.0'
 #       next-version: '0.1.1-SNAPSHOT'
+#     # Both version and next-version are optional:
+#     # - version empty  -> derived from the current POM version (strips -SNAPSHOT)
+#     # - next-version empty -> derived as the release version with patch+1 and -SNAPSHOT
 #     secrets:
 #       MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
 #       MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
 #       GPG_SECRET_KEY: ${{ secrets.GPG_SECRET_KEY }}
 #       GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
-name: Maven Central Release
+name: Maven Release
 
 on:
   workflow_call:
     inputs:
       version:
-        description: 'Release version (e.g., 0.1.0)'
-        required: true
+        description: 'Release version (e.g., 0.1.0). Empty means derive it from the current POM version (strips -SNAPSHOT).'
+        required: false
         type: string
+        default: ''
       java-version:
         description: 'Java version to use'
         required: false
@@ -60,7 +64,7 @@ on:
         type: string
         default: 'v'
       next-version:
-        description: 'Next development version to commit after the release (e.g., 0.1.1-SNAPSHOT). Empty means no bump.'
+        description: 'Next development version to commit after the release (e.g., 0.1.1-SNAPSHOT). Empty means derive it as the release version with patch+1 and -SNAPSHOT.'
         required: false
         type: string
         default: ''
@@ -93,7 +97,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout-minutes }}
     concurrency:
-      group: maven-central-release
+      group: maven-release
       cancel-in-progress: false
     env:
       RELEASE_BRANCH: ${{ inputs.release-branch != '' && inputs.release-branch || github.event.repository.default_branch }}
@@ -113,20 +117,55 @@ jobs:
           gpg-private-key: ${{ secrets.GPG_SECRET_KEY }}
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
 
-      - name: Validate version inputs
+      - name: Resolve versions
         env:
-          RELEASE_VERSION: ${{ inputs.version }}
-          NEXT_VERSION: ${{ inputs.next-version }}
+          RELEASE_VERSION_IN: ${{ inputs.version }}
+          NEXT_VERSION_IN: ${{ inputs.next-version }}
+          TAG_PREFIX: ${{ inputs.tag-prefix }}
         run: |
+          set -o pipefail
           VERSION_REGEX='^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$'
-          if ! printf '%s' "$RELEASE_VERSION" | grep -Eq "$VERSION_REGEX"; then
-            echo "::error::version must be X.Y.Z or X.Y.Z-suffix, got '${RELEASE_VERSION}'"
+          check_version() {
+            if ! printf '%s' "$2" | grep -Eq "$VERSION_REGEX"; then
+              echo "::error::${1} must be X.Y.Z or X.Y.Z-suffix, got '${2}'"
+              exit 1
+            fi
+          }
+          bump_patch() {
+            base=$(printf '%s' "$1" | sed -E 's/-.*$//')
+            major=$(printf '%s' "$base" | cut -d. -f1)
+            minor=$(printf '%s' "$base" | cut -d. -f2)
+            patch=$(printf '%s' "$base" | cut -d. -f3)
+            printf '%s.%s.%s' "$major" "$minor" "$((patch + 1))"
+          }
+
+          DERIVED=false
+          RELEASE_VERSION="$RELEASE_VERSION_IN"
+          if [ -z "$RELEASE_VERSION" ]; then
+            CURRENT=$(./mvnw -N -q help:evaluate -Dexpression=project.version -DforceStdout | tail -n 1)
+            echo "Current POM version: ${CURRENT}"
+            RELEASE_VERSION=${CURRENT%-SNAPSHOT}
+            check_version "derived release version (from POM version ${CURRENT})" "$RELEASE_VERSION"
+            DERIVED=true
+          fi
+          check_version "version" "$RELEASE_VERSION"
+
+          TAG_NAME="${TAG_PREFIX}${RELEASE_VERSION}"
+          if [ "$DERIVED" = true ] && git ls-remote --exit-code --tags origin "refs/tags/${TAG_NAME}" >/dev/null 2>&1; then
+            echo "::error::tag ${TAG_NAME} already exists; pass 'version' explicitly"
             exit 1
           fi
-          if [ -n "$NEXT_VERSION" ] && ! printf '%s' "$NEXT_VERSION" | grep -Eq "$VERSION_REGEX"; then
-            echo "::error::next-version must be X.Y.Z or X.Y.Z-suffix, got '${NEXT_VERSION}'"
-            exit 1
+
+          NEXT_VERSION="$NEXT_VERSION_IN"
+          if [ -z "$NEXT_VERSION" ]; then
+            NEXT_VERSION="$(bump_patch "$RELEASE_VERSION")-SNAPSHOT"
+            echo "Derived next version: ${NEXT_VERSION}"
           fi
+          check_version "next-version" "$NEXT_VERSION"
+
+          echo "RELEASE_VERSION=$RELEASE_VERSION" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=$TAG_NAME" >> "$GITHUB_ENV"
+          echo "NEXT_VERSION=$NEXT_VERSION" >> "$GITHUB_ENV"
 
       - name: Configure Git identity
         run: |
@@ -134,8 +173,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Set version
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
         run: ./mvnw -B versions:set -DnewVersion="${RELEASE_VERSION}" -DgenerateBackupPoms=false
 
       - name: Verify no SNAPSHOT references
@@ -168,8 +205,6 @@ jobs:
 
       - name: Commit release version
         if: ${{ inputs.create-tag }}
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
         run: |
           git add -A
           if git diff --cached --quiet; then
@@ -182,8 +217,6 @@ jobs:
 
       - name: Create Git tag
         if: ${{ inputs.create-tag }}
-        env:
-          TAG_NAME: ${{ inputs.tag-prefix }}${{ inputs.version }}
         run: |
           git tag -a "${TAG_NAME}" -m "Release ${TAG_NAME}"
           git push origin "${TAG_NAME}"
@@ -193,16 +226,14 @@ jobs:
         # Pinned to softprops/action-gh-release v3.0.3; Renovate raises the pin
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
         with:
-          tag_name: ${{ inputs.tag-prefix }}${{ inputs.version }}
-          name: ${{ inputs.version }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_VERSION }}
           draft: false
-          prerelease: ${{ contains(inputs.version, '-') }}
+          prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
           generate_release_notes: true
 
       - name: Bump to next development version
-        if: ${{ inputs.create-tag && inputs.next-version != '' }}
-        env:
-          NEXT_VERSION: ${{ inputs.next-version }}
+        if: ${{ inputs.create-tag }}
         run: |
           ./mvnw -B versions:set -DnewVersion="${NEXT_VERSION}" -DgenerateBackupPoms=false
           git add -A

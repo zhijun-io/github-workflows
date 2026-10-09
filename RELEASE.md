@@ -7,7 +7,7 @@ projects publishing to Maven Central, plus a reusable Docker image build.
 
 | Concern | Owner |
 |---------|-------|
-| versions:set, commit, tag, deploy, next development version | `maven-central-release.yml` |
+| versions:set, commit, tag, deploy, next development version | `maven-release.yml` |
 | Local preflight and triggering the release | `zhijun-io-release.py` |
 
 Keeping this split in one place is what makes the two re-runnable: the script
@@ -20,7 +20,7 @@ All four workflows take `java-version` (default `17`), `java-distribution`
 (default `temurin`) and `timeout-minutes`. They run on `ubuntu-latest` and
 require `./mvnw` in the calling repository.
 
-### CI Build (`ci-build.yml`)
+### CI Build (`ci.yml`)
 
 **Inputs**
 - `maven-goals` (default: `clean verify -B`) - Maven goals to run
@@ -30,7 +30,7 @@ require `./mvnw` in the calling repository.
 
 No secrets required.
 
-### Publish Snapshot (`publish-snapshot.yml`)
+### Maven Snapshot (`maven-snapshot.yml`)
 
 Deploys the current `-SNAPSHOT` version. The project POM (or its parent) must
 declare the `central` snapshot repository in `<distributionManagement>`.
@@ -42,15 +42,17 @@ declare the `central` snapshot repository in `<distributionManagement>`.
 
 **Secrets (required)**: `MAVEN_USERNAME`, `MAVEN_PASSWORD`
 
-### Maven Central Release (`maven-central-release.yml`)
+### Maven Release (`maven-release.yml`)
 
 **Inputs**
-- `version` (required) - Release version, `X.Y.Z` or `X.Y.Z-suffix`
+- `version` (default: ``) - Release version, `X.Y.Z` or `X.Y.Z-suffix`; empty
+  derives it from the current root POM version (strips `-SNAPSHOT`)
 - `skip-tests` (default: `false`)
 - `create-tag` (default: `true`) - Commit the release version, tag and push
 - `tag-prefix` (default: `v`) - `v0.1.0` for version `0.1.0`
 - `next-version` (default: ``) - Development version to commit after the release;
-  empty means no bump. Use a `-SNAPSHOT` version such as `0.1.1-SNAPSHOT`.
+  empty derives the release version with patch+1 and `-SNAPSHOT`
+  (e.g. `0.1.1-SNAPSHOT`)
 - `release-branch` (default: ``) - Branch to push to; empty resolves to the
   repository default branch
 - `timeout-minutes` (default: `30`)
@@ -150,7 +152,7 @@ Steps:
 
 Projects are declared in `PROJECTS` at the top of the script; add an entry there
 when onboarding a new repository - the target repository must provide
-`.github/workflows/release.yml` calling `maven-central-release.yml`. Progress is
+`.github/workflows/release.yml` calling `maven-release.yml`. Progress is
 written to `state/`, and both `state/` and `<project>-release/` are git-ignored.
 
 ## Secrets
