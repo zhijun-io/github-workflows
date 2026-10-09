@@ -218,8 +218,9 @@ jobs:
       - name: Create Git tag
         if: ${{ inputs.create-tag }}
         run: |
-          git tag -a "${TAG_NAME}" -m "Release ${TAG_NAME}"
-          git push origin "${TAG_NAME}"
+          : "${RELEASE_TAG:?unable to resolve the release tag}"
+          git tag -a "${RELEASE_TAG}" -m "Release ${RELEASE_TAG}"
+          git push origin "${RELEASE_TAG}"
 
       - name: Create GitHub Release
         if: ${{ inputs.create-tag }}
