@@ -2,12 +2,12 @@
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: ['config:recommended'],
 
-  // 由 .github/workflows/renovate.yml 按计划执行（自托管，可用私有仓库）。
+  // 由 .github/workflows/renovate.yml 按计划执行（自托管，可用于私有仓库）。
   // 引擎版本跟随 renovatebot/github-action 的固定引用，不单独钉一个会过期的值。
-  description: 'Renovate 配置：管理复用工作流里的 action 引用与 actionlint 版本。',
+  description: 'Renovate 配置：管理复用工作流里的 action 引用。',
 
   // 本仓库只有工作流，没有包清单；显式限定 manager 避免无谓的文件扫描。
-  enabledManagers: ['github-actions', 'regex'],
+  enabledManagers: ['github-actions'],
 
   labels: ['dependencies'],
   schedule: ['before 9am on monday'],
@@ -17,32 +17,23 @@
   prHourlyLimit: 2,
   rebaseWhen: 'behind-base-branch',
 
-  // 默认自动合并，但 major 例外：action 大版本会换 runtime 与行为，需要人看。
+  // 自动合并不绑定某个具体 workflow：Renovate 默认要求 PR 上已有的状态检查全部
+  // 通过，无需在分支保护里配 required check。反方向不成立——PR 上一条检查都没有
+  // 时视为通过并直接合并，所以要保证仓库始终有对 PR 生效的检查作业。
   automerge: true,
   automergeType: 'branch',
 
   packageRules: [
     {
-      description: 'major 升级只开 PR，不自动合并',
+      description: 'major 升级只开 PR，不自动合并（大版本会换 runtime 与行为）',
       matchUpdateTypes: ['major'],
       automerge: false,
     },
     {
-      description: 'patch、minor 与 pin 合并为一个 PR，lint 通过后自动合并',
+      description: 'patch、minor 与 pin 合并为一个 PR，检查通过后自动合并',
       matchUpdateTypes: ['patch', 'minor', 'pin'],
       groupName: 'actions 非 major 升级',
       automerge: true,
-    },
-  ],
-
-  customManagers: [
-    {
-      customType: 'regex',
-      fileMatch: ['^\\.github/workflows/lint\\.yml$'],
-      // 注释行必须紧邻赋值行，Renovate 靠它把 env 值识别成依赖
-      matchStrings: [
-        '# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n\\s*ACTIONLINT_VERSION:\\s*(?<currentValue>[0-9.]+)',
-      ],
     },
   ],
 }

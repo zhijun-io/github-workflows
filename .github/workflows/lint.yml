@@ -29,7 +29,6 @@ jobs:
 
       - name: Install actionlint
         env:
-          # renovate: datasource=github-tags depName=rhysd/actionlint
           ACTIONLINT_VERSION: 1.7.12
         run: |
           # ubuntu-latest is amd64; re-check this URL if the runner image changes

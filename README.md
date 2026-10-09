@@ -122,24 +122,30 @@ someone else's repository cannot change what the check accepts.
 ## Version Bumps
 
 `.github/workflows/renovate.yml` runs self-hosted Renovate weekly against
-`.github/renovate.json5`, updating the `actions/*` refs, the SHA pins and the
-pinned `actionlint` version.
+`.github/renovate.json5`, updating the `actions/*` refs and the SHA-pinned
+third-party actions.
 
 Policy: `patch`, `minor` and `pin` updates are grouped into one pull request and
-**automerged once the lint check passes**. `major` updates open a pull request
-but are never automerged - a major action bump changes runtimes and behaviour,
-which is exactly how these workflows fell three majors behind last time.
+**automerged once the pull request's status checks are green**. `major` updates
+open a pull request but are never automerged - a major action bump changes
+runtimes and behaviour, which is exactly how these workflows fell three majors
+behind last time.
+
+Automerge depends on check *results*, not on any particular workflow, so there
+is nothing to configure in branch protection for it: Renovate requires every
+status check that exists on the PR to pass. The reverse is not true - a PR with
+no checks at all counts as green, so keep `lint.yml` running on pull requests.
+
+The pinned `actionlint` version in `lint.yml` is deliberately not managed here;
+bump it when you decide the new linter rules are worth adopting.
 
 Setup and guardrails:
 
 1. Create `RENOVATE_TOKEN` as a fine-grained PAT (or GitHub App installation
    token) with write access to this repository and the `workflow` scope. Renovate
-   must merge with that token - a merge made with the default `GITHUB_TOKEN` does
-   not trigger the lint workflow, so automerge would have nothing to wait for.
-2. Mark `Lint Workflows / actionlint` as a required status check. Renovate only
-   automerges when checks are green; without a required check a PR with no status
-   at all could merge unverified.
-3. Branch protection must let that token bypass pull-request reviews, otherwise
+   must merge with that token - a merge made with the default `GITHUB_TOKEN`
+   never triggers workflows, so nothing would run before automerge.
+2. Branch protection must let that token bypass pull-request reviews, otherwise
    automerge stalls silently.
 
 ## Projects
