@@ -17,9 +17,8 @@
   prHourlyLimit: 2,
   rebaseWhen: 'behind-base-branch',
 
-  // 自动合并不绑定某个具体 workflow：Renovate 默认要求 PR 上已有的状态检查全部
-  // 通过，无需在分支保护里配 required check。反方向不成立——PR 上一条检查都没有
-  // 时视为通过并直接合并，所以要保证仓库始终有对 PR 生效的检查作业。
+  // 本仓库没有 CI，PR 上不会有任何状态检查，Renovate 因此视为通过并立即合并。
+  // 自动合并只适用于 patch/minor/pin，破坏性变更都集中在 major。
   automerge: true,
   automergeType: 'branch',
 

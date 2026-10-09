@@ -13,7 +13,6 @@ github-workflows/
 │   │   ├── ci-build.yml               # Reusable CI build and test workflow
 │   │   ├── publish-snapshot.yml       # Reusable -SNAPSHOT publishing workflow
 │   │   ├── maven-central-release.yml  # Reusable Maven Central release workflow
-│   │   ├── lint.yml                   # Lints the reusable workflows above
 │   │   └── renovate.yml               # Runs self-hosted Renovate on a schedule
 │   ├── community-projects.yml         # Project registry (documentation only)
 │   ├── project.yml.template           # Template for a future PR-based release flow
@@ -108,17 +107,6 @@ version, checks for SNAPSHOT references, runs a fast build and triggers
 pushes - the workflow owns the release. Requires Python 3.8+ and `gh`
 (`gh auth login`) for the trigger step; `--no-workflow` stops after the preflight.
 
-## Linting These Workflows
-
-```bash
-brew install actionlint shellcheck
-actionlint
-```
-
-`.github/workflows/lint.yml` runs the same check on every push and pull request.
-It installs a pinned, checksum-verified `actionlint` release, so a moved tag on
-someone else's repository cannot change what the check accepts.
-
 ## Version Bumps
 
 `.github/workflows/renovate.yml` runs self-hosted Renovate weekly against
@@ -126,25 +114,21 @@ someone else's repository cannot change what the check accepts.
 third-party actions.
 
 Policy: `patch`, `minor` and `pin` updates are grouped into one pull request and
-**automerged once the pull request's status checks are green**. `major` updates
-open a pull request but are never automerged - a major action bump changes
-runtimes and behaviour, which is exactly how these workflows fell three majors
-behind last time.
+**automerged**. `major` updates open a pull request but are never automerged - a
+major action bump changes runtimes and behaviour, which is exactly how these
+workflows fell three majors behind last time.
 
-Automerge depends on check *results*, not on any particular workflow, so there
-is nothing to configure in branch protection for it: Renovate requires every
-status check that exists on the PR to pass. The reverse is not true - a PR with
-no checks at all counts as green, so keep `lint.yml` running on pull requests.
-
-The pinned `actionlint` version in `lint.yml` is deliberately not managed here;
-bump it when you decide the new linter rules are worth adopting.
+This repository runs no CI of its own, so there is nothing for Renovate to wait
+for: an automerged action bump lands unverified, and a mistake surfaces later as
+a failing workflow in a consuming repository. Keep `major` out of automerge for
+that reason, and review the grouped PR before it merges if you want a say.
 
 Setup and guardrails:
 
 1. Create `RENOVATE_TOKEN` as a fine-grained PAT (or GitHub App installation
    token) with write access to this repository and the `workflow` scope. Renovate
    must merge with that token - a merge made with the default `GITHUB_TOKEN`
-   never triggers workflows, so nothing would run before automerge.
+   never triggers workflows in the consuming repositories.
 2. Branch protection must let that token bypass pull-request reviews, otherwise
    automerge stalls silently.
 

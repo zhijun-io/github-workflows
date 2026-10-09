@@ -1,10 +1,10 @@
-# Runs self-hosted Renovate so action references and the pinned actionlint
-# version stay current instead of rotting until a release breaks.
+# Runs self-hosted Renovate so the action references in these reusable
+# workflows stay current instead of rotting until a release breaks.
 #
 # RENOVATE_TOKEN must be a fine-grained PAT (or GitHub App installation token)
-# with write access to this repository and the `workflow` scope. Renovate merges
-# with that token, so its own PRs can run the lint workflow and be automerged -
-# a merge made with the default GITHUB_TOKEN would not trigger checks.
+# with write access to this repository and the `workflow` scope. The default
+# GITHUB_TOKEN cannot be used: PRs it creates never start workflows, and it
+# cannot approve or automerge its own pull requests.
 
 name: Renovate
 
