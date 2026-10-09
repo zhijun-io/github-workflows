@@ -117,7 +117,7 @@ jobs:
 `./mvnw`. It builds with the `docker buildx` CLI shipped on the runner, defaults
 to `ghcr.io/<owner>/<repository>` with the built-in `GITHUB_TOKEN`, and always
 adds an immutable `sha-<short>` tag. Non-GHCR registries need the
-`registry-username` input and the `REGISTRY_PASSWORD` secret. Single
+`registry-username` input and the `DOCKER_TOKEN` secret. Single
 architecture only, and no layer cache - see [RELEASE.md](RELEASE.md).
 
 ## Release Script

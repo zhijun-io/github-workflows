@@ -9,7 +9,7 @@
 #
 # The calling job MUST grant `permissions: packages: write` to push to GHCR with
 # the built-in token. Any other registry needs the registry-username input plus
-# the REGISTRY_PASSWORD secret.
+# the DOCKER_TOKEN secret.
 #
 # Usage in calling repository:
 # jobs:
@@ -79,7 +79,7 @@ on:
         type: number
         default: 30
     secrets:
-      REGISTRY_PASSWORD:
+      DOCKER_TOKEN:
         description: 'Password or access token for registries other than ghcr.io'
         required: false
 
@@ -112,10 +112,10 @@ jobs:
       - name: Log in to registry
         if: ${{ inputs.push && inputs.registry != 'ghcr.io' }}
         env:
-          REGISTRY_TOKEN: ${{ secrets.REGISTRY_PASSWORD }}
+          REGISTRY_TOKEN: ${{ secrets.DOCKER_TOKEN }}
         run: |
           if [ -z "$REGISTRY_USERNAME" ] || [ -z "$REGISTRY_TOKEN" ]; then
-            echo "::error::registry '${REGISTRY}' needs the registry-username input and the REGISTRY_PASSWORD secret"
+            echo "::error::registry '${REGISTRY}' needs the registry-username input and the DOCKER_TOKEN secret"
             exit 1
           fi
           printf '%s' "$REGISTRY_TOKEN" | docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin

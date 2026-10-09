@@ -90,7 +90,7 @@ actions are used, so there is nothing extra to pin or keep current.
 - `timeout-minutes` (default: `30`)
 
 **Secrets**: none required for GHCR - the workflow logs in with the built-in
-`GITHUB_TOKEN`. Any other registry needs `REGISTRY_PASSWORD` plus the
+`GITHUB_TOKEN`. Any other registry needs `DOCKER_TOKEN` plus the
 `registry-username` input, and fails fast if either is missing.
 
 The calling job must declare:
@@ -155,7 +155,7 @@ individual repositories can override them.
 | `MAVEN_PASSWORD` | Sonatype Central Portal token |
 | `GPG_SECRET_KEY` | ASCII-armored GPG private key |
 | `GPG_PASSPHRASE` | GPG key passphrase |
-| `REGISTRY_PASSWORD` | Password or access token for a Docker registry other than GHCR - optional |
+| `DOCKER_TOKEN` | Password or access token for a Docker registry other than GHCR - optional |
 
 ## Project Registry
 
@@ -248,5 +248,5 @@ dependency tree instead, add maven-enforcer to the `release` profile with
 | Release commits and tags appear, but no CI runs afterwards | Expected - pushes made with `GITHUB_TOKEN` do not trigger workflows |
 | Push rejected while branch protection is active | Allow the `github-actions[bot]` identity, or point `release-branch` at an unprotected branch |
 | `denied` or `unauthorized` when pushing an image | The calling job lacks `permissions: packages: write`, or the token cannot create the package in that namespace |
-| `needs the registry-username input and the REGISTRY_PASSWORD secret` | A non-GHCR `registry` was set without credentials |
+| `needs the registry-username input and the DOCKER_TOKEN secret` | A non-GHCR `registry` was set without credentials |
 | Image pushed but no architecture matches the runner | Expected - `docker-build.yml` is single-architecture, `linux/amd64` |
