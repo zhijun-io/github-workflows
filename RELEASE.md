@@ -1,7 +1,7 @@
 # Zhijun IO Release Management
 
 This repository provides shared release infrastructure for Zhijun IO Maven
-projects publishing to Maven Central.
+projects publishing to Maven Central, plus a reusable Docker image build.
 
 ## Ownership
 
@@ -16,9 +16,10 @@ checkout and owns every commit it pushes.
 
 ## Reusable Workflows
 
-All three take `java-version` (default `17`), `java-distribution` (default
-`temurin`) and `timeout-minutes`. They run on `ubuntu-latest` and require
-`./mvnw` in the calling repository.
+The three Maven workflows take `java-version` (default `17`), `java-distribution`
+(default `temurin`) and `timeout-minutes`. They run on `ubuntu-latest` and
+require `./mvnw` in the calling repository. `docker-build.yml` is the fourth
+workflow: it runs no Maven and therefore needs no wrapper.
 
 ### CI Build (`ci-build.yml`)
 
@@ -68,6 +69,52 @@ If the default branch is protected, the protection rule must allow the
 `github-actions[bot]` identity used by the workflow, or releases fail at the
 push step after artifacts are already published.
 
+### Docker Image (`docker-build.yml`)
+
+Builds the image described by a `Dockerfile` with the `docker buildx` CLI that
+ships on the runner, and pushes it when `push` is `true`. No third-party Docker
+actions are used, so there is nothing extra to pin or keep current.
+
+**Inputs**
+- `registry` (default: `ghcr.io`) - Registry host used in every tag
+- `image-owner` (default: ``) - Registry namespace; empty resolves to the
+  repository owner, lowercased because registry namespaces are case-sensitive
+- `image-name` (default: ``) - Image name; empty resolves to the repository name
+- `registry-username` (default: ``) - Username for registries other than `ghcr.io`
+- `context` (default: `.`) - Build context directory
+- `dockerfile` (default: `Dockerfile`) - Dockerfile path, relative to the context
+- `tags` (default: `latest`) - Comma-separated tags; an immutable `sha-<short>`
+  tag is always appended
+- `build-args` (default: ``) - Comma-separated `KEY=VALUE` build arguments
+- `push` (default: `false`) - Push the built tags
+- `timeout-minutes` (default: `30`)
+
+**Secrets**: none required for GHCR - the workflow logs in with the built-in
+`GITHUB_TOKEN`. Any other registry needs `REGISTRY_PASSWORD` plus the
+`registry-username` input, and fails fast if either is missing.
+
+The calling job must declare:
+
+```yaml
+    permissions:
+      contents: read
+      packages: write
+```
+
+Limitations, all deliberate:
+
+- Comma-separated `tags` and `build-args` cannot contain spaces; spaces are
+  stripped before parsing.
+- The build command is echoed to the log for diagnosis, so `build-args` values
+  are visible: never pass a credential as a build argument.
+- Single architecture only. Multi-arch output needs a buildx driver with a
+  cross-architecture engine, and layer caching needs `setup-buildx-action` to
+  create a `type=gha` cache - neither is worth the extra third-party dependency
+  for the images these projects publish.
+
+Published image refs are written to the job summary and to the step outputs
+`image` and `tags`.
+
 ## Release Script
 
 `zhijun-io-release.py` needs Python 3.8+, `git`, and `gh` for the trigger step.
@@ -108,6 +155,7 @@ individual repositories can override them.
 | `MAVEN_PASSWORD` | Sonatype Central Portal token |
 | `GPG_SECRET_KEY` | ASCII-armored GPG private key |
 | `GPG_PASSPHRASE` | GPG key passphrase |
+| `REGISTRY_PASSWORD` | Password or access token for a Docker registry other than GHCR - optional |
 
 ## Project Registry
 
@@ -119,6 +167,9 @@ on `project.yml` yet. Update all three together, or delete them if the duplicati
 stops paying for itself.
 
 ## Requirements for Consumer Projects
+
+These apply to the Maven workflows. `docker-build.yml` needs only a `Dockerfile`
+at the path it is given.
 
 1. Maven wrapper (`./mvnw`) committed and executable
 2. A `release` profile that publishes signed sources and javadoc through the
@@ -196,3 +247,6 @@ dependency tree instead, add maven-enforcer to the `release` profile with
 | SNAPSHOT check fails right after a successful release | The bump step did not run - pass `next-version` |
 | Release commits and tags appear, but no CI runs afterwards | Expected - pushes made with `GITHUB_TOKEN` do not trigger workflows |
 | Push rejected while branch protection is active | Allow the `github-actions[bot]` identity, or point `release-branch` at an unprotected branch |
+| `denied` or `unauthorized` when pushing an image | The calling job lacks `permissions: packages: write`, or the token cannot create the package in that namespace |
+| `needs the registry-username input and the REGISTRY_PASSWORD secret` | A non-GHCR `registry` was set without credentials |
+| Image pushed but no architecture matches the runner | Expected - `docker-build.yml` is single-architecture, `linux/amd64` |

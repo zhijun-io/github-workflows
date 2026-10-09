@@ -2,7 +2,7 @@
 
 Reusable GitHub Actions workflows and release tooling for Zhijun IO Maven projects.
 
-Every workflow here assumes the calling repository provides a Maven wrapper (`./mvnw`).
+Every Maven workflow here assumes the calling repository provides a Maven wrapper (`./mvnw`).
 
 ## Repository Structure
 
@@ -13,6 +13,7 @@ github-workflows/
 │   │   ├── ci-build.yml               # Reusable CI build and test workflow
 │   │   ├── publish-snapshot.yml       # Reusable -SNAPSHOT publishing workflow
 │   │   ├── maven-central-release.yml  # Reusable Maven Central release workflow
+│   │   ├── docker-build.yml           # Reusable Docker image build and push workflow
 │   │   └── renovate.yml               # Runs self-hosted Renovate on a schedule
 │   ├── community-projects.yml         # Project registry (documentation only)
 │   ├── project.yml.template           # Template for a future PR-based release flow
@@ -31,6 +32,8 @@ github-workflows/
 3. Grant the release job `permissions: contents: write`. Without it the workflow
    cannot push the release commit, push the tag, or create the GitHub Release.
 4. Configure the account or repository secrets listed in [RELEASE.md](RELEASE.md).
+5. Grant the image job `permissions: packages: write` when a workflow pushes to
+   GHCR. Without it the push is rejected by the registry.
 
 ## Quick Start
 
@@ -90,6 +93,32 @@ jobs:
 
 Forward `next-version`: `zhijun-io-release.py` passes it, and GitHub silently
 drops inputs that the caller does not declare.
+
+Minimal Docker caller:
+
+```yaml
+name: Container Image
+
+on:
+  workflow_dispatch:
+
+jobs:
+  image:
+    permissions:
+      contents: read
+      packages: write
+    uses: zhijun-io/github-workflows/.github/workflows/docker-build.yml@main
+    with:
+      push: true
+      tags: 'latest,0.1.0'
+```
+
+`docker-build.yml` is the only workflow that does not run Maven, so it needs no
+`./mvnw`. It builds with the `docker buildx` CLI shipped on the runner, defaults
+to `ghcr.io/<owner>/<repository>` with the built-in `GITHUB_TOKEN`, and always
+adds an immutable `sha-<short>` tag. Non-GHCR registries need the
+`registry-username` input and the `REGISTRY_PASSWORD` secret. Single
+architecture only, and no layer cache - see [RELEASE.md](RELEASE.md).
 
 ## Release Script
 

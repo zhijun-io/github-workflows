@@ -1,0 +1,186 @@
+# Reusable Docker Image Build Workflow for Zhijun IO Projects
+#
+# Builds the image described by the Dockerfile and optionally pushes it. Uses
+# the docker/buildx CLI shipped with the runner image, so no third-party Docker
+# actions are pulled in and there is nothing extra to pin or keep current.
+#
+# Single-architecture builds only: multi-arch needs a buildx builder with a
+# cross-architecture engine, which this workflow deliberately does not set up.
+#
+# The calling job MUST grant `permissions: packages: write` to push to GHCR with
+# the built-in token. Any other registry needs the registry-username input plus
+# the REGISTRY_PASSWORD secret.
+#
+# Usage in calling repository:
+# jobs:
+#   image:
+#     permissions:
+#       contents: read
+#       packages: write
+#     uses: zhijun-io/github-workflows/.github/workflows/docker-build.yml@main
+#     with:
+#       push: true
+#       tags: '0.1.0,latest'
+#       build-args: 'JAR_FILE=target/app.jar'
+
+name: Docker Build
+
+on:
+  workflow_call:
+    inputs:
+      registry:
+        description: 'Registry to tag and push against'
+        required: false
+        type: string
+        default: 'ghcr.io'
+      image-owner:
+        description: 'Registry namespace owner. Defaults to the repository owner.'
+        required: false
+        type: string
+        default: ''
+      image-name:
+        description: 'Image name. Defaults to the repository name.'
+        required: false
+        type: string
+        default: ''
+      registry-username:
+        description: 'Username for registries other than ghcr.io'
+        required: false
+        type: string
+        default: ''
+      context:
+        description: 'Build context directory'
+        required: false
+        type: string
+        default: '.'
+      dockerfile:
+        description: 'Dockerfile path, relative to the build context'
+        required: false
+        type: string
+        default: 'Dockerfile'
+      tags:
+        description: 'Comma-separated tags. Values cannot contain spaces. An immutable sha-<short> tag is always added.'
+        required: false
+        type: string
+        default: 'latest'
+      build-args:
+        description: 'Comma-separated KEY=VALUE build arguments. Values cannot contain spaces.'
+        required: false
+        type: string
+        default: ''
+      push:
+        description: 'Push the image after building'
+        required: false
+        type: boolean
+        default: false
+      timeout-minutes:
+        description: 'Maximum job runtime'
+        required: false
+        type: number
+        default: 30
+    secrets:
+      REGISTRY_PASSWORD:
+        description: 'Password or access token for registries other than ghcr.io'
+        required: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    env:
+      REGISTRY: ${{ inputs.registry }}
+      IMAGE_OWNER: ${{ inputs.image-owner }}
+      IMAGE_NAME: ${{ inputs.image-name }}
+      REGISTRY_USERNAME: ${{ inputs.registry-username }}
+      BUILD_CONTEXT: ${{ inputs.context }}
+      DOCKERFILE: ${{ inputs.dockerfile }}
+      TAGS: ${{ inputs.tags }}
+      BUILD_ARGS: ${{ inputs.build-args }}
+      PUSH: ${{ inputs.push }}
+      REPOSITORY: ${{ github.repository }}
+      ACTOR: ${{ github.actor }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Log in to GitHub Packages
+        if: ${{ inputs.push && inputs.registry == 'ghcr.io' }}
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login "$REGISTRY" -u "$ACTOR" --password-stdin
+
+      - name: Log in to registry
+        if: ${{ inputs.push && inputs.registry != 'ghcr.io' }}
+        env:
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_PASSWORD }}
+        run: |
+          if [ -z "$REGISTRY_USERNAME" ] || [ -z "$REGISTRY_TOKEN" ]; then
+            echo "::error::registry '${REGISTRY}' needs the registry-username input and the REGISTRY_PASSWORD secret"
+            exit 1
+          fi
+          printf '%s' "$REGISTRY_TOKEN" | docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
+
+      - name: Build image
+        id: build
+        run: |
+          set -euo pipefail
+
+          owner="${IMAGE_OWNER:-${REPOSITORY%%/*}}"
+          name="${IMAGE_NAME:-${REPOSITORY##*/}}"
+          # Registry namespaces are lowercase, account names may not be
+          owner="$(printf '%s' "$owner" | tr '[:upper:]' '[:lower:]')"
+          image="${REGISTRY}/${owner}/${name}"
+
+          tags=()
+          requested_tags="${TAGS// /}"
+          if [ -n "$requested_tags" ]; then
+            IFS=',' read -r -a parsed_tags <<< "$requested_tags"
+            for tag in "${parsed_tags[@]}"; do
+              if [ -n "$tag" ]; then
+                tags+=("$tag")
+              fi
+            done
+          fi
+          tags+=("sha-$(git rev-parse --short=7 HEAD)")
+
+          args=()
+          requested_args="${BUILD_ARGS// /}"
+          if [ -n "$requested_args" ]; then
+            IFS=',' read -r -a parsed_args <<< "$requested_args"
+            for build_arg in "${parsed_args[@]}"; do
+              if [ -n "$build_arg" ]; then
+                args+=("--build-arg" "$build_arg")
+              fi
+            done
+          fi
+          for tag in "${tags[@]}"; do
+            args+=("--tag" "${image}:${tag}")
+          done
+          if [ "$PUSH" = "true" ]; then
+            args+=("--push")
+          fi
+
+          joined_tags="$(IFS=,; printf '%s' "${tags[*]}")"
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+          echo "tags=${joined_tags}" >> "$GITHUB_OUTPUT"
+
+          echo "Building ${image} with ${#tags[@]} tag(s)"
+          echo "docker buildx build ${args[*]} -f ${DOCKERFILE} ${BUILD_CONTEXT}"
+          docker buildx build "${args[@]}" -f "$DOCKERFILE" "$BUILD_CONTEXT"
+
+      - name: Summarize
+        if: ${{ inputs.push }}
+        env:
+          IMAGE: ${{ steps.build.outputs.image }}
+          IMAGE_TAGS: ${{ steps.build.outputs.tags }}
+        run: |
+          {
+            echo "### Docker image"
+            echo
+            echo '```'
+            IFS=',' read -r -a tags <<< "$IMAGE_TAGS"
+            for tag in "${tags[@]}"; do
+              echo "${IMAGE}:${tag}"
+            done
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
