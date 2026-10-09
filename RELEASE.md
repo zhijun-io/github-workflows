@@ -1,222 +1,129 @@
 # Zhijun IO Release Management
 
-This repository provides shared infrastructure for releasing Zhijun IO projects to Maven Central.
+This repository provides shared release infrastructure for Zhijun IO Maven
+projects publishing to Maven Central.
 
-## Overview
+## Ownership
 
-The Zhijun IO maintains several related projects that can benefit from shared release infrastructure:
+| Concern | Owner |
+|---------|-------|
+| versions:set, commit, tag, deploy, next development version | `maven-central-release.yml` |
+| Local preflight and triggering the release | `zhijun-io-release.py` |
 
-| Project | Description | Status |
-|---------|-------------|--------|
-| agent-client | Process execution and workspace management | Active |
-
-## Integration Tiers
-
-Projects can adopt all, some, or none of the shared tooling:
-
-| Tier | Reusable Workflows | Parent POM | PR-based Releases | Release Script |
-|------|-------------------|------------|-------------------|----------------|
-| **Full** | Yes | Yes | Yes | Yes |
-| **Partial** | Yes | No | Optional | Yes |
-| **Independent** | No | No | No | Manual only |
+Keeping this split in one place is what makes the two re-runnable: the script
+leaves the POM dirty in a throwaway clone, the workflow starts from a clean
+checkout and owns every commit it pushes.
 
 ## Reusable Workflows
 
+All three take `java-version` (default `17`), `java-distribution` (default
+`temurin`) and `timeout-minutes`. They run on `ubuntu-latest` and require
+`./mvnw` in the calling repository.
+
 ### CI Build (`ci-build.yml`)
 
-Standard CI workflow for building and testing.
+**Inputs**
+- `maven-goals` (default: `clean verify -B`) - Maven goals to run
+- `skip-tests` (default: `false`) - Append `-DskipTests`
+- `upload-test-results` (default: `true`) - Upload surefire and failsafe reports
+- `timeout-minutes` (default: `60`)
 
-**Usage:**
-```yaml
-name: CI Build
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-jobs:
-  build:
-    uses: zhijun-io/github-workflows/.github/workflows/ci-build.yml@main
-    with:
-      java-version: '17'
-```
-
-**Inputs:**
-- `java-version` (default: `17`) - Java version to use
-- `java-distribution` (default: `temurin`) - Java distribution
-- `maven-goals` (default: `clean verify -B -ntp`) - Maven goals to run
-- `skip-tests` (default: `false`) - Skip running tests
-- `upload-test-results` (default: `true`) - Upload test results as artifact
+No secrets required.
 
 ### Publish Snapshot (`publish-snapshot.yml`)
 
-Publishes SNAPSHOT versions to Maven Central.
+Deploys the current `-SNAPSHOT` version. The project POM (or its parent) must
+declare the `central` snapshot repository in `<distributionManagement>`.
 
-**Usage:**
-```yaml
-name: Publish Snapshot
+**Inputs**
+- `skip-tests` (default: `false`) - Skip tests during the verify phase
+- `verify-first` (default: `true`) - Run `clean verify` before `deploy`
+- `timeout-minutes` (default: `60`)
 
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-
-jobs:
-  publish:
-    uses: zhijun-io/github-workflows/.github/workflows/publish-snapshot.yml@main
-    secrets:
-      MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
-      MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
-```
-
-**Inputs:**
-- `java-version` (default: `17`) - Java version to use
-- `skip-tests` (default: `false`) - Skip tests before publish
-- `verify-first` (default: `true`) - Run verify before deploy
-
-**Secrets Required:**
-- `MAVEN_USERNAME` - Sonatype Portal username
-- `MAVEN_PASSWORD` - Sonatype Portal token
+**Secrets (required)**: `MAVEN_USERNAME`, `MAVEN_PASSWORD`
 
 ### Maven Central Release (`maven-central-release.yml`)
 
-Full release workflow with GPG signing and tagging.
+**Inputs**
+- `version` (required) - Release version, `X.Y.Z` or `X.Y.Z-suffix`
+- `skip-tests` (default: `false`)
+- `create-tag` (default: `true`) - Commit the release version, tag and push
+- `tag-prefix` (default: `v`) - `v0.1.0` for version `0.1.0`
+- `next-version` (default: ``) - Development version to commit after the release;
+  empty means no bump. Use a `-SNAPSHOT` version such as `0.1.1-SNAPSHOT`.
+- `release-branch` (default: ``) - Branch to push to; empty resolves to the
+  repository default branch
+- `timeout-minutes` (default: `30`)
 
-**Usage:**
+**Secrets (required)**: `MAVEN_USERNAME`, `MAVEN_PASSWORD`, `GPG_SECRET_KEY`, `GPG_PASSPHRASE`
+
+The calling job must declare:
+
 ```yaml
-name: Release
-
-on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version (e.g., 0.1.0)'
-        required: true
-        type: string
-
-jobs:
-  release:
-    uses: zhijun-io/github-workflows/.github/workflows/maven-central-release.yml@main
-    with:
-      version: ${{ inputs.version }}
-    secrets:
-      MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
-      MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
-      GPG_SECRET_KEY: ${{ secrets.GPG_SECRET_KEY }}
-      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+    permissions:
+      contents: write
 ```
 
-**Inputs:**
-- `version` (required) - Release version (e.g., `0.1.0`)
-- `java-version` (default: `17`) - Java version to use
-- `skip-tests` (default: `false`) - Skip tests
-- `create-tag` (default: `true`) - Create and push Git tag
-- `tag-prefix` (default: `v`) - Tag prefix (e.g., `v` for `v0.1.0`)
-
-**Secrets Required:**
-- `MAVEN_USERNAME` - Sonatype Portal username
-- `MAVEN_PASSWORD` - Sonatype Portal token
-- `GPG_SECRET_KEY` - ASCII-armored GPG private key
-- `GPG_PASSPHRASE` - GPG passphrase
+If the default branch is protected, the protection rule must allow the
+`github-actions[bot]` identity used by the workflow, or releases fail at the
+push step after artifacts are already published.
 
 ## Release Script
 
-The `zhijun-io-release.py` script provides interactive command-line releases with the same experience as the Spring AI release scripts.
-
-### Installation
-
-The script requires Python 3.8+ with no additional dependencies.
-
-### Usage
+`zhijun-io-release.py` needs Python 3.8+, `git`, and `gh` for the trigger step.
 
 ```bash
-# Release agent-client 0.1.0
-python3 zhijun-io-release.py agent-client 0.1.0
+# Preview every command without executing
+python3 zhijun-io-release.py rose-parent 0.0.2 --dry-run
 
-# Dry run (preview without making changes)
-python3 zhijun-io-release.py agent-client 0.1.0 --dry-run
+# Preflight and trigger
+python3 zhijun-io-release.py rose-parent 0.0.2
 
-# Release with specific GitHub org
-python3 zhijun-io-release.py agent-client 0.1.0 --org zhijun-io
+# Preflight only
+python3 zhijun-io-release.py rose-parent 0.0.2 --no-workflow
 ```
 
-### What the Script Does
+Steps:
 
-1. **Clone** - Fresh checkout to isolated workspace
-2. **Set Version** - Update POM versions via `mvn versions:set`
-3. **Verify** - Check no SNAPSHOT dependencies remain
-4. **Build** - Fast compile (skip tests for speed)
-5. **Commit** - Commit release version
-6. **Tag** - Create Git tag (e.g., `v0.1.0`)
-7. **Push** - Push tag to GitHub
-8. **Trigger** - Optionally trigger GitHub Actions release workflow
+1. **Clone** - fresh checkout into `<project>-release/` (`gh repo clone` when
+   `gh` is available, so private repositories authenticate)
+2. **Set Version** - `./mvnw versions:set`
+3. **Verify** - no SNAPSHOT references remain
+4. **Build** - fast compile with tests skipped
+5. **Trigger** - `gh workflow run release.yml -f version=… -f next-version=…`
 
-### Features
+Projects are declared in `PROJECTS` at the top of the script; add an entry there
+when onboarding a new repository - the target repository must provide
+`.github/workflows/release.yml` calling `maven-central-release.yml`. Progress is
+written to `state/`, and both `state/` and `<project>-release/` are git-ignored.
 
-- Interactive step-by-step confirmation
-- Dry-run mode for previewing changes
-- State persistence for resuming interrupted releases
-- Colored console output for readability
+## Secrets
 
-## Organization Secrets
-
-Set these secrets at the organization level for all repositories to use:
+Set these once at the account level (Settings → Secrets and variables → Actions);
+individual repositories can override them.
 
 | Secret | Description |
 |--------|-------------|
-| `MAVEN_USERNAME` | Sonatype Portal username |
-| `MAVEN_PASSWORD` | Sonatype Portal token |
+| `MAVEN_USERNAME` | Sonatype Central Portal username |
+| `MAVEN_PASSWORD` | Sonatype Central Portal token |
 | `GPG_SECRET_KEY` | ASCII-armored GPG private key |
-| `GPG_PASSPHRASE` | GPG passphrase |
-
-Individual repositories can override with their own secrets if maintainers prefer using personal credentials.
+| `GPG_PASSPHRASE` | GPG key passphrase |
 
 ## Project Registry
 
-The `community-projects.yml` file lists all participating projects with their dependencies. This enables:
+`.github/community-projects.yml` documents the ecosystem and dependency order.
+It is **documentation only** - no workflow or script reads it, and the release
+script keeps its own `PROJECTS` list. `.github/project.yml.template` and the
+`pr-based-releases` flag are likewise unread by automation: no workflow triggers
+on `project.yml` yet. Update all three together, or delete them if the duplication
+stops paying for itself.
 
-- Coordinated multi-project releases in dependency order
-- Consistent configuration across projects
-- Documentation of the community ecosystem
+## Requirements for Consumer Projects
 
-## Migration Guide
+1. Maven wrapper (`./mvnw`) committed and executable
+2. A `release` profile that publishes signed sources and javadoc through the
+   Central publishing plugin:
 
-### Migrating to Reusable Workflows
-
-1. Add workflow files that call the reusable workflows:
-
-```yaml
-# .github/workflows/ci.yml
-name: CI Build
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-jobs:
-  build:
-    uses: zhijun-io/github-workflows/.github/workflows/ci-build.yml@main
-```
-
-2. Ensure your repository has the required secrets configured
-
-3. Test with a dry-run or SNAPSHOT publish first
-
-### Requirements for Projects
-
-Projects using these workflows must have:
-
-1. Maven wrapper (`./mvnw`) in repository root
-2. Standard Maven project structure
-3. `release` profile in POM with:
-   - `central-publishing-maven-plugin` with `autoPublish=true`
-   - `maven-gpg-plugin` with loopback pinentry
-   - `maven-source-plugin` and `maven-javadoc-plugin`
-
-Example release profile:
 ```xml
 <profile>
     <id>release</id>
@@ -225,7 +132,7 @@ Example release profile:
             <plugin>
                 <groupId>org.sonatype.central</groupId>
                 <artifactId>central-publishing-maven-plugin</artifactId>
-                <version>0.9.0</version>
+                <version>0.10.0</version>
                 <extensions>true</extensions>
                 <configuration>
                     <publishingServerId>central</publishingServerId>
@@ -252,7 +159,40 @@ Example release profile:
                     </execution>
                 </executions>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>3.3.0</version>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar-no-fork</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </profile>
 ```
+
+`rose-parent` already provides this profile, so inheriting from it satisfies
+the requirement.
+
+The release workflow greps the POM files for `SNAPSHOT`. To check the resolved
+dependency tree instead, add maven-enforcer to the `release` profile with
+`requireReleaseDeps` and `requireReleaseVersion`.
+
+## Troubleshooting
+
+| Symptom | Cause |
+|---------|-------|
+| `Resource not accessible by integration` | Missing `permissions: contents: write` on the calling job |
+| `process started with '/bin/bash -e {0}' failed with exit code 1` at the tag step | GPG passphrase secret missing or mismatched with the imported key |
+| Release never appears on Central | `release` profile absent, or `autoPublish` disabled - check the deployment log for a publishing-portal link |
+| `next-version` has no effect | The caller does not declare/forward the input; GitHub drops unmatched inputs silently |
+| `gh: command not found` / auth error from the script | Run `gh auth login`, then retry with `--dry-run` first |
+| SNAPSHOT check fails right after a successful release | The bump step did not run - pass `next-version` |
+| Release commits and tags appear, but no CI runs afterwards | Expected - pushes made with `GITHUB_TOKEN` do not trigger workflows |
+| Push rejected while branch protection is active | Allow the `github-actions[bot]` identity, or point `release-branch` at an unprotected branch |

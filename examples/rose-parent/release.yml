@@ -1,0 +1,46 @@
+# Release workflow for rose-parent
+# Place this file at .github/workflows/release.yml in the rose-parent repository
+
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 0.0.2)'
+        required: true
+        type: string
+      next-version:
+        description: 'Next development version after the release (e.g., 0.0.3-SNAPSHOT). Empty to skip the bump.'
+        required: false
+        type: string
+      skip_tests:
+        description: 'Skip tests (use for hotfixes only)'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# Default to least privilege; the release job raises it to write below.
+permissions:
+  contents: read
+
+jobs:
+  release:
+    if: github.repository_owner == 'zhijun-io'
+    permissions:
+      contents: write
+    uses: zhijun-io/github-workflows/.github/workflows/maven-central-release.yml@main
+    with:
+      version: ${{ inputs.version }}
+      next-version: ${{ inputs.next-version }}
+      java-version: '17'
+      skip-tests: ${{ inputs.skip_tests }}
+    secrets:
+      MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
+      MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
+      GPG_SECRET_KEY: ${{ secrets.GPG_SECRET_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}

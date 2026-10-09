@@ -1,0 +1,15 @@
+# rose-parent project configuration
+# Place this file at .github/project.yml in the rose-parent repository
+#
+# Not read by any automation yet - see .github/project.yml.template
+
+name: rose-parent
+
+release:
+  current-version: "0.0.2"
+  next-version: "0.0.3-SNAPSHOT"
+
+integration:
+  uses-reusable-workflows: true
+  pr-based-releases: false
+  java-version: "17"

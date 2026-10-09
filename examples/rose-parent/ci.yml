@@ -1,5 +1,5 @@
-# CI workflow for agent-client
-# Place this file at .github/workflows/ci.yml in the agent-client repository
+# CI workflow for rose-parent
+# Place this file at .github/workflows/ci.yml in the rose-parent repository
 
 name: CI Build
 
@@ -23,17 +23,13 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   build:
     if: github.repository_owner == 'zhijun-io'
-    uses: zhijun-io/github-workflows/.github/workflows/ci-build-with-cli.yml@main
+    uses: zhijun-io/github-workflows/.github/workflows/ci-build.yml@main
     with:
       java-version: '17'
-      install-claude-cli: true
-      install-gemini-cli: true
-      install-vendir-cli: true
-      validate-commits: true
       maven-goals: 'clean install -B'
-    secrets:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

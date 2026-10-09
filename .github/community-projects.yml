@@ -3,10 +3,14 @@
 # This file lists all projects in the Zhijun IO organization
 # that participate in coordinated releases and shared infrastructure.
 #
+# Documentation only: no workflow or script reads this file today.
+# The release script keeps its own list in zhijun-io-release.py (PROJECTS).
+#
 # Projects can opt-in to different levels of integration:
 # - reusable-workflows: Uses shared GitHub Actions workflows
-# - parent-pom: Inherits from community-parent POM
+# - parent-pom: Inherits from a shared parent POM
 # - pr-based-releases: Automatically releases when project.yml changes
+#   (not implemented - no workflow triggers on project.yml)
 #
 # Dependency order determines release sequence for coordinated releases.
 
@@ -14,10 +18,10 @@ organization: zhijun-io
 default-java-version: "17"
 
 projects:
-  - name: agent-client
-    repo: zhijun-io/agent-client
-    description: "Sandbox abstraction for secure code execution in AI agent applications"
-    artifact-id: agent-client-parent
+  - name: rose-parent
+    repo: zhijun-io/rose-parent
+    description: "Parent POM for Rose projects (Java 17, Maven Central publishing)"
+    artifact-id: rose-parent
     group-id: io.github.zhijun-io
     dependencies: []
     integration:
@@ -25,5 +29,24 @@ projects:
       parent-pom: false
       pr-based-releases: false
 
+  - name: spring-boot-skills
+    repo: zhijun-io/spring-boot-skills
+    description: "SkillsJars for Spring Boot applications"
+    artifact-id: spring-boot-skills
+    group-id: io.github.zhijun-io
+    dependencies: [rose-parent]
+    integration:
+      reusable-workflows: true
+      parent-pom: true
+      pr-based-releases: false
 
-
+  - name: rose
+    repo: zhijun-io/rose
+    description: "Rose capability SDK (bom / core / web / starters)"
+    artifact-id: rose
+    group-id: io.zhijun.rose
+    dependencies: []
+    integration:
+      reusable-workflows: false
+      parent-pom: false
+      pr-based-releases: false

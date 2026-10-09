@@ -1,13 +1,17 @@
 # Project Configuration Template
 #
 # Copy this file to .github/project.yml in your repository to enable
-# version tracking and optional PR-based releases.
+# version tracking, once PR-based releases exist.
 #
-# PR-based release flow:
+# NOT READ BY ANY AUTOMATION YET. The flow below is a plan, not an
+# implementation: no workflow in github-workflows triggers on this file.
+#
+# Planned PR-based release flow:
 # 1. Create a PR that updates `release.current-version`
 # 2. Merging the PR triggers the release workflow automatically
 #
-# This is OPTIONAL - projects can continue using manual workflow_dispatch releases.
+# Releases today go through maven-central-release.yml (workflow_dispatch)
+# or zhijun-io-release.py.
 
 # Project name (should match repository name)
 name: rose-example
