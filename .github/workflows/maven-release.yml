@@ -228,7 +228,7 @@ jobs:
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          name: ${{ env.RELEASE_VERSION }}
+          name: ${{ env.RELEASE_TAG }}
           draft: false
           prerelease: ${{ contains(env.RELEASE_VERSION, '-') }}
           generate_release_notes: true
