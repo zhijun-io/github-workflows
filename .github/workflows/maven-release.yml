@@ -15,7 +15,7 @@
 #   release:
 #     permissions:
 #       contents: write
-#     uses: zhijun-io/github-workflows/.github/workflows/maven-release.yml@main
+#     uses: zhijun-io/github-workflows/.github/workflows/maven-release.yml@8616121e4b309c8bb75db2acfb7d76965c553682
 #     with:
 #       version: '0.1.0'
 #       next-version: '0.1.1-SNAPSHOT'
