@@ -33,7 +33,7 @@ jobs:
     if: github.repository_owner == 'zhijun-io'
     permissions:
       contents: write
-    uses: zhijun-io/github-workflows/.github/workflows/maven-release.yml@main
+    uses: zhijun-io/github-workflows/.github/workflows/maven-release.yml@8616121e4b309c8bb75db2acfb7d76965c553682
     with:
       version: ${{ inputs.version }}
       next-version: ${{ inputs.next-version }}

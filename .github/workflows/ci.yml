@@ -44,6 +44,20 @@ on:
         required: false
         type: number
         default: 60
+      codecov-files:
+        description: 'Explicit coverage report paths to upload; empty disables Codecov upload'
+        required: false
+        type: string
+        default: ''
+      codecov-flags:
+        description: 'Comma-separated Codecov flags'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      CODECOV_TOKEN:
+        description: 'Optional Codecov upload token'
+        required: false
 
 jobs:
   build:
@@ -82,3 +96,13 @@ jobs:
             **/target/failsafe-reports/
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Upload coverage to Codecov
+        if: ${{ inputs.codecov-files != '' }}
+        uses: codecov/codecov-action@v7.1.1
+        with:
+          files: ${{ inputs.codecov-files }}
+          disable_search: true
+          flags: ${{ inputs.codecov-flags }}
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
