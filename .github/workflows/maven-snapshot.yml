@@ -32,11 +32,6 @@ on:
         required: false
         type: boolean
         default: false
-      verify-first:
-        description: 'Run verify before deploy'
-        required: false
-        type: boolean
-        default: true
       timeout-minutes:
         description: 'Maximum job runtime'
         required: false
@@ -68,19 +63,14 @@ jobs:
           server-username: MAVEN_USERNAME
           server-password: MAVEN_PASSWORD
 
-      - name: Build and verify
-        if: ${{ inputs.verify-first }}
+      - name: Build, verify, and publish snapshot
         env:
           SKIP_TESTS: ${{ inputs.skip-tests }}
+          MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
         run: |
           EXTRA_ARGS=""
           if [ "$SKIP_TESTS" = "true" ]; then
             EXTRA_ARGS="-DskipTests"
           fi
-          ./mvnw clean verify -B -ntp ${EXTRA_ARGS}
-
-      - name: Publish snapshot to Maven Central
-        run: ./mvnw deploy -B -ntp -DskipTests
-        env:
-          MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
-          MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
+          ./mvnw clean deploy -B -ntp ${EXTRA_ARGS}
